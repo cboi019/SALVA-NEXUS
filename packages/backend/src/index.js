@@ -58,6 +58,7 @@ mongoose.connect(process.env.MONGO_URI)
 // ===============================================
 
 // 1. SEND OTP
+// 1. SEND OTP
 app.post('/api/auth/send-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email required" });
@@ -68,8 +69,9 @@ app.post('/api/auth/send-otp', async (req, res) => {
     expires: Date.now() + 600000 // 10 mins
   };
 
+  // --- REPLACE YOUR OLD TRY/CATCH WITH THIS ---
   try {
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: `"Salva Nexus" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verify your Salva Account",
@@ -84,11 +86,20 @@ app.post('/api/auth/send-otp', async (req, res) => {
         </div>
       `
     });
-    console.log(`📧 OTP sent to ${email}`);
+    console.log("📧 Email sent successfully:", info.messageId);
     res.json({ message: 'OTP sent successfully' });
   } catch (err) {
-    console.error("❌ Email Error:", err);
-    res.status(500).json({ message: 'Error sending email' });
+    // This logs the SPECIFIC reason Gmail is blocking you to your Render console
+    console.error("❌ NODEMAILER FAIL:", {
+      code: err.code,
+      command: err.command,
+      response: err.response,
+      stack: err.stack
+    });
+    res.status(500).json({ 
+      message: 'Email service currently unavailable', 
+      details: err.code 
+    });
   }
 });
 
