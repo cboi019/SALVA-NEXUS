@@ -1,0 +1,29 @@
+[profile.default]
+# 1. Source Trace (from your image: 'contracts' folder)
+src = '../Project-NGNs-StableCoin/contracts'
+
+# 2. Script Trace (from your image: where DeployNGNs.s.sol lives)
+script = '../Project-NGNs-StableCoin/script'
+
+# 3. Test Trace (from your image: where Test_NGNs.t.sol lives)
+test = '../Project-NGNs-StableCoin/test'
+
+# 4. Library Trace (from your image: forge-std and OZ)
+libs = ['../Project-NGNs-StableCoin/lib']
+
+# Standard output paths (Keep these local to Salva)
+out = 'out'
+cache_path = 'cache'
+
+# 5. Remappings (Mapping the 'Lego' parts)
+remappings = [
+    '@openzeppelin/contracts/=../Project-NGNs-StableCoin/lib/openzeppelin-contracts/contracts/',
+    'forge-std/=../Project-NGNs-StableCoin/lib/forge-std/src/'
+]
+
+# 6. Permissions (Crucial for cross-folder scripts)
+fs_permissions = [
+    # ONLY allow reading from the actual code folders
+    { access = "read", path = "../Project-NGNs-StableCoin/contracts" },
+    { access = "read", path = "../Project-NGNs-StableCoin/script" }
+]
