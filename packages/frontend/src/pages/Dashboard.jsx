@@ -1,9 +1,11 @@
 // Dashboard.jsx - SALVA DIGITAL TECH STABLECOIN DASHBOARD
+import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 import Stars from '../components/Stars';
+
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -54,7 +56,7 @@ const Dashboard = () => {
 
   const fetchBalance = async (address) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/balance/${address}`);
+      const res = await fetch(`${API_BASE_URL}/api/balance/${address}`);
       const data = await res.json();
       setBalance(parseFloat(data.balance || 0).toFixed(2));
     } catch {
@@ -64,7 +66,7 @@ const Dashboard = () => {
 
   const fetchTransactions = async (address) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/transactions/${address}`);
+      const res = await fetch(`${API_BASE_URL}/api/transactions/${address}`);
       const data = await res.json();
       setTransactions(Array.isArray(data) ? data : []);
     } catch {
@@ -136,7 +138,7 @@ const Dashboard = () => {
     showMsg("Initiating blockchain transfer...", "info");
 
     try {
-      const response = await fetch('http://localhost:3001/api/transfer', {
+      const response = await fetch(`${API_BASE_URL}/api/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

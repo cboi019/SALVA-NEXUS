@@ -1,4 +1,5 @@
 // Transactions.jsx - COMPLETE WITH LIGHT MODE & FIXES
+import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -65,7 +66,7 @@ const Transactions = () => {
 
   const fetchTransactions = async (address) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/transactions/${address}`);
+      const res = await fetch(`${API_BASE_URL}/api/transactions/${address}`);
       const data = await res.json();
       setTransactions(Array.isArray(data) ? data : []);
     } catch (err) { 

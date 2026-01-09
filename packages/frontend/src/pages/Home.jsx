@@ -51,7 +51,9 @@ const Home = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch(`http://localhost:3001/api/stats`, {
+        // Get the base URL from environment variables, or fallback to localhost for development
+        const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
+        const res = await fetch(`${API_BASE_URL}/api/stats`, {
           signal: AbortSignal.timeout(10000) 
         });
         

@@ -1,3 +1,4 @@
+import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
@@ -28,7 +29,7 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:3001/api/auth/send-otp', {
+      const res = await fetch(`${API_BASE_URL}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email })
@@ -55,7 +56,7 @@ const Login = () => {
     // If we are in registration mode, we verify the OTP first
     if (!isLogin && regStep === 2) {
       try {
-        const verifyRes = await fetch('http://localhost:3001/api/auth/verify-otp', {
+        const verifyRes = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: formData.email, code: otp })
@@ -73,7 +74,7 @@ const Login = () => {
     const endpoint = isLogin ? '/api/login' : '/api/register';
     
     try {
-      const response = await fetch(`http://localhost:3001${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)

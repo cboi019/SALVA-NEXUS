@@ -12,7 +12,14 @@ const Transaction = require('./models/Transaction');
 const mongoose = require('mongoose');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://salva-nexus.onrender.com', // Your Render Frontend URL
+    'http://localhost:3000'             // For local testing
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
+}));
 app.use(express.json());
 
 // Temporary storage for OTPs (Email -> {code, expires})
