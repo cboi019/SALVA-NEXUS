@@ -439,7 +439,3 @@ app.listen(PORT, () => {
   console.log(`🚀 SALVA BACKEND ACTIVE ON PORT ${PORT}`);
 });
 
-/*
-
-
-*/
