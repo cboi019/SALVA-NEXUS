@@ -28,13 +28,15 @@ const otpStore = {};
 // Nodemailer Setup
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
-  secure: true, // Use SSL/TLS
-  connectionTimeout: 5000,
-  greetingTimeout: 5000,
+  port: 587,
+  secure: false, // Use SSL/TLS
+  connectionTimeout: 10000,
   auth: {
     user: process.env.EMAIL_USER || 'charlieonyii42@gmail.com',
     pass: process.env.EMAIL_PASS 
+  }, 
+  tls: {
+    rejectUnauthorized: false // Helps bypass some cloud network restrictions
   }
 });
 
