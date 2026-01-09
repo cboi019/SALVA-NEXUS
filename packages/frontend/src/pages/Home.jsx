@@ -17,7 +17,7 @@ const CountUp = ({ to, decimals = 0 }) => {
     setIsCounting(true);
     const controls = animate(0, targetValue, {
       duration: 2.5, 
-      ease: [0.16, 1, 0.3, 1], // Custom "out-expo" ease for a premium feel
+      ease: [0.16, 1, 0.3, 1], 
       onUpdate: (value) => setCurrentValue(value),
       onComplete: () => setIsCounting(false)
     });
@@ -51,7 +51,6 @@ const Home = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Get the base URL from environment variables, or fallback to localhost for development
         const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
         const res = await fetch(`${API_BASE_URL}/api/stats`, {
           signal: AbortSignal.timeout(10000) 
@@ -104,13 +103,13 @@ const Home = () => {
         </motion.div>
       </section>
 
-      {/* Stats Section */}
-      <motion.section {...fadeIn} className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-8">
+      {/* Stats Section - Increased max-width to give cards more space */}
+      <motion.section {...fadeIn} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10">
           <StatCard 
             title="Total NGNs Circulating" 
             value={loading ? "0" : <CountUp to={stats.totalMinted} decimals={2} />} 
-            suffix=" NGNs" 
+            suffix="NGNs" 
           />
           <StatCard 
             title="Salva Network Citizens" 
@@ -136,21 +135,23 @@ const Home = () => {
   );
 };
 
-// Updated StatCard with an inner glow container
+// Updated StatCard with optimized font sizing and width handling
 const StatCard = ({ title, value, suffix = "" }) => (
-  <div className="group relative p-8 md:p-12 rounded-3xl md:rounded-[3rem] border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 backdrop-blur-sm hover:border-salvaGold/50 transition-all duration-500 w-full flex flex-col justify-center overflow-hidden">
+  <div className="group relative p-8 md:p-10 lg:p-12 rounded-3xl md:rounded-[3rem] border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 backdrop-blur-sm hover:border-salvaGold/50 transition-all duration-500 w-full flex flex-col justify-center overflow-hidden min-h-[180px]">
     {/* Inner decorative glow */}
     <div className="absolute -inset-1 bg-gradient-to-r from-salvaGold/0 via-salvaGold/5 to-salvaGold/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
     
     <p className="relative z-10 text-[10px] sm:text-xs uppercase tracking-[0.3em] sm:tracking-[0.4em] text-salvaGold mb-4 md:mb-6 font-bold">
       {title}
     </p>
-    <div className="relative z-10 flex flex-nowrap items-baseline overflow-visible">
-      <p className="text-2xl sm:text-4xl lg:text-5xl xl:text-6xl font-black tracking-tighter whitespace-nowrap">
+    
+    <div className="relative z-10 flex items-baseline flex-wrap">
+      {/* Reduced font size from lg:text-5xl/xl:text-6xl to lg:text-4xl/xl:text-5xl */}
+      <h3 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-black tracking-tighter truncate max-w-full">
         {value}
-      </p>
+      </h3>
       {suffix && (
-        <span className="text-sm sm:text-lg md:text-xl font-bold opacity-40 whitespace-nowrap ml-2">
+        <span className="text-xs sm:text-sm md:text-base font-bold opacity-40 ml-2 whitespace-nowrap">
           {suffix}
         </span>
       )}
