@@ -245,21 +245,20 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/balance/:address', async (req, res) => {
   try {
     const { address } = req.params;
-    
     const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
-    const tokenContract = new ethers.Contract(
-      process.env.NGN_TOKEN_ADDRESS,
-      TOKEN_ABI,
-      provider
-    );
+    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
 
-    const balanceWei = await tokenContract.balanceOf(address);
-    const balance = ethers.formatUnits(balanceWei, 6); // NGNs has 6 decimals
+    // Use your retry helper here!
+    const balanceWei = await retryRPCCall(async () => {
+      return await tokenContract.balanceOf(address);
+    }, 3, 1000); 
 
+    const balance = ethers.formatUnits(balanceWei, 6);
     res.json({ balance });
   } catch (error) {
     console.error("❌ Balance fetch failed:", error);
-    res.status(500).json({ message: "Failed to fetch balance", balance: "0" });
+    // Return 0 instead of a 500 error so the UI doesn't break
+    res.status(200).json({ balance: "0.00" }); 
   }
 });
 
@@ -438,3 +437,9 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 SALVA BACKEND ACTIVE ON PORT ${PORT}`);
 });
+
+/*
+
+
+git push https://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@github.com/cboi019/SALVA-NEXUS.git main
+*/
