@@ -6,7 +6,6 @@ import { Link } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 import Stars from '../components/Stars';
 
-
 const Dashboard = () => {
   const [user, setUser] = useState(null);
   const [balance, setBalance] = useState('0.00');
@@ -221,6 +220,20 @@ const Dashboard = () => {
           </div>
         </div>
 
+        {/* WALLET ADDRESS SECTION - ADDED BACK & RESPONSIVE */}
+        <div 
+          onClick={() => {
+            navigator.clipboard.writeText(user.safeAddress);
+            showMsg("Wallet address copied!");
+          }}
+          className="mb-8 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all"
+        >
+          <p className="text-[10px] uppercase opacity-40 font-bold mb-1 tracking-widest">Smart Wallet Address (Base)</p>
+          <p className="font-mono text-[10px] sm:text-xs text-salvaGold font-medium break-all truncate">
+            {showBalance ? user.safeAddress : '0x••••••••••••••••••••••••••••••••••••••••'}
+          </p>
+        </div>
+
         <section className="px-1">
           <div className="flex justify-between items-end mb-6">
             <h3 className="uppercase tracking-widest text-salvaGold text-[10px] sm:text-xs font-bold">Recent Activity</h3>
@@ -281,7 +294,7 @@ const Dashboard = () => {
                   <input
                     required
                     type="text"
-                    placeholder="Enter Account Number"
+                    placeholder="Enter Account Number or Address"
                     value={transferData.to}
                     onChange={(e) => setTransferData({ ...transferData, to: e.target.value })}
                     className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm"

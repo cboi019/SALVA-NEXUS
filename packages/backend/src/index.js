@@ -245,20 +245,21 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/balance/:address', async (req, res) => {
   try {
     const { address } = req.params;
+    
     const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
-    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+    const tokenContract = new ethers.Contract(
+      process.env.NGN_TOKEN_ADDRESS,
+      TOKEN_ABI,
+      provider
+    );
 
-    // Use your retry helper here!
-    const balanceWei = await retryRPCCall(async () => {
-      return await tokenContract.balanceOf(address);
-    }, 3, 1000); 
+    const balanceWei = await tokenContract.balanceOf(address);
+    const balance = ethers.formatUnits(balanceWei, 6); // NGNs has 6 decimals
 
-    const balance = ethers.formatUnits(balanceWei, 6);
     res.json({ balance });
   } catch (error) {
     console.error("❌ Balance fetch failed:", error);
-    // Return 0 instead of a 500 error so the UI doesn't break
-    res.status(200).json({ balance: "0.00" }); 
+    res.status(500).json({ message: "Failed to fetch balance", balance: "0" });
   }
 });
 
@@ -441,5 +442,4 @@ app.listen(PORT, () => {
 /*
 
 
-git push https://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@github.com/cboi019/SALVA-NEXUS.git main
 */
