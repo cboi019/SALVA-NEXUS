@@ -175,10 +175,10 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
-      {/* BRANDING SECTION: S Logo is dominant, SALVA text follows */}
-      <div className="absolute top-6 left-6 flex items-center gap-3 z-50 pointer-events-none">
-        <img src={salvaLogo} alt="S" className="w-16 h-16 object-contain" />
-        <span className="text-2xl font-black tracking-tighter text-black dark:text-white">SALVA</span>
+      {/* BRANDING: Big S logo with smaller SALVA text */}
+      <div className="absolute top-6 left-6 flex items-center gap-2 z-50 pointer-events-none">
+        <img src={salvaLogo} alt="S" className="w-16 h-16 sm:w-20 sm:h-20 object-contain" />
+        <span className="text-base sm:text-lg font-black tracking-tighter text-black dark:text-white">SALVA</span>
       </div>
 
       <Stars />
