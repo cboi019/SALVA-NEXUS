@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom'; // Added useNavigate
 import { jsPDF } from "jspdf";
 import Stars from '../components/Stars';
-import salvaLogo from '../assets/salva-logo.png'; // IMPORTED LOGO
+import salvaLogo from '../assets/salva-logo.png';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -175,17 +175,19 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
+      {/* BRANDING SECTION AT TOP LEFT */}
+      <div className="absolute top-8 left-8 flex items-center gap-2 z-50">
+        <img src={salvaLogo} alt="S" className="w-12 h-12 object-contain" />
+        <span className="text-xl font-black tracking-tighter">SALVA</span>
+      </div>
+
       <Stars />
 
       <div className="max-w-4xl mx-auto relative z-10">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-12">
-          <div className="flex items-center gap-4">
-            {/* ADDED LOGO: S is bigger than the text block */}
-            <img src={salvaLogo} alt="S" className="w-16 h-16 object-contain" />
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-salvaGold font-bold">Salva Citizen</p>
-              <h2 className="text-3xl sm:text-4xl font-black truncate max-w-[200px] sm:max-w-none">{user.username}</h2>
-            </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-salvaGold font-bold">Salva Citizen</p>
+            <h2 className="text-3xl sm:text-4xl font-black truncate max-w-[200px] sm:max-w-none">{user.username}</h2>
           </div>
           <div className="bg-gray-100 dark:bg-white/5 p-4 rounded-2xl w-full sm:w-auto">
             <p className="text-[10px] uppercase opacity-40 font-bold">Account Number</p>
@@ -251,7 +253,6 @@ const Dashboard = () => {
           
           <div className="space-y-3">
             {transactions.length > 0 ? (
-              // FIXED: slice(0, 3) and added onClick to navigate
               transactions.slice(0, 3).map((tx, i) => (
                 <div 
                   key={i} 
