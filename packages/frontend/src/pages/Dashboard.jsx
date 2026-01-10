@@ -17,6 +17,11 @@ const Dashboard = () => {
   const [amountError, setAmountError] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
 
+  // NEW STATES FOR UPDATED FEATURES
+  const [activeTab, setActiveTab] = useState('activity'); 
+  const [approveData, setApproveData] = useState({ spender: '', amount: '' });
+  const [transferFromData, setTransferFromData] = useState({ from: '', to: '', amount: '' });
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -170,6 +175,50 @@ const Dashboard = () => {
     }
   };
 
+  // NEW HANDLERS FOR APPROVE AND TRANSFERFROM
+  const handleApprove = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/approve`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userPrivateKey: user.ownerKey,
+                safeAddress: user.safeAddress,
+                spenderInput: approveData.spender,
+                amount: approveData.amount
+            })
+        });
+        if (response.ok) showMsg("Approval updated on-chain!");
+        else showMsg("Approval failed", "error");
+    } catch (err) { showMsg("Connection error", "error"); }
+    setLoading(false);
+  };
+
+  const handleTransferFrom = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userPrivateKey: user.ownerKey,
+                safeAddress: user.safeAddress,
+                fromInput: transferFromData.from,
+                toInput: transferFromData.to,
+                amount: transferFromData.amount
+            })
+        });
+        if (response.ok) {
+            showMsg("TransferFrom successful!");
+            fetchBalance(user.safeAddress);
+        } else showMsg("TransferFrom failed", "error");
+    } catch (err) { showMsg("Connection error", "error"); }
+    setLoading(false);
+  };
+
   if (!user) return null;
 
   return (
@@ -236,46 +285,107 @@ const Dashboard = () => {
           </p>
         </div>
 
-        <section className="px-1">
-          <div className="flex justify-between items-end mb-6">
-            <h3 className="uppercase tracking-widest text-salvaGold text-[10px] sm:text-xs font-bold">Recent Activity</h3>
-            <Link to="/transactions" className="text-[10px] uppercase tracking-tighter opacity-50 hover:opacity-100 transition-opacity font-bold underline">
-              View History
-            </Link>
-          </div>
-          
-          <div className="space-y-3">
-            {transactions.length > 0 ? (
-              transactions.slice(0, 3).map((tx, i) => (
-                <div
-                  key={i}
-                  onClick={() => navigate('/transactions')}
-                  className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4"
-                >
-                  <div className="min-w-0">
-                    <p className="font-bold text-sm sm:text-base truncate">{tx.type === 'receive' ? 'Received' : 'Sent'}</p>
-                    <p className="text-[10px] sm:text-xs opacity-40 font-medium">{new Date(tx.date).toLocaleDateString()}</p>
+        {/* UPDATED TAB NAVIGATION */}
+        <div className="flex border-b border-white/10 mb-6 gap-8 overflow-x-auto no-scrollbar">
+          {['activity', 'approve', 'transferFrom'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-2 text-[10px] uppercase tracking-widest font-black transition-all whitespace-nowrap ${
+                activeTab === tab ? 'border-b-2 border-salvaGold text-salvaGold' : 'opacity-40 hover:opacity-100'
+              }`}
+            >
+              {tab === 'activity' ? 'Recent Activity' : tab.replace(/([A-Z])/g, ' $1')}
+            </button>
+          ))}
+        </div>
+
+        {/* TAB CONTENT: ACTIVITY (Updated for Bidirectional) */}
+        {activeTab === 'activity' && (
+          <section className="px-1">
+            <div className="flex justify-between items-end mb-6">
+              <h3 className="uppercase tracking-widest text-salvaGold text-[10px] sm:text-xs font-bold">History</h3>
+              <Link to="/transactions" className="text-[10px] uppercase tracking-tighter opacity-50 hover:opacity-100 transition-opacity font-bold underline">
+                View All
+              </Link>
+            </div>
+            
+            <div className="space-y-3">
+              {transactions.length > 0 ? (
+                transactions.slice(0, 5).map((tx, i) => (
+                  <div
+                    key={i}
+                    onClick={() => navigate('/transactions')}
+                    className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm sm:text-base truncate">
+                        {tx.displayType === 'receive' ? `From: ${tx.displayPartner}` : `To: ${tx.displayPartner}`}
+                      </p>
+                      <p className="text-[10px] sm:text-xs opacity-40 font-medium uppercase">{tx.displayType || 'Transfer'}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className={`font-black text-sm sm:text-base ${tx.displayType === 'receive' ? 'text-green-400' : 'text-red-400'}`}>
+                        {tx.displayType === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}
+                      </p>
+                      <button
+                        onClick={(e) => downloadReceipt(e, tx)}
+                        className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter"
+                      >
+                        Receipt ↓
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className={`font-black text-sm sm:text-base ${tx.type === 'receive' ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.type === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}
-                    </p>
-                    <button
-                      onClick={(e) => downloadReceipt(e, tx)}
-                      className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter"
-                    >
-                      Receipt ↓
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <p className="text-center py-10 opacity-30 text-xs font-medium uppercase tracking-widest">Vault is empty</p>
-            )}
-          </div>
-        </section>
+                ))
+              ) : (
+                <p className="text-center py-10 opacity-30 text-xs font-medium uppercase tracking-widest">Vault is empty</p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* TAB CONTENT: APPROVE */}
+        {activeTab === 'approve' && (
+          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
+            <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Authorize Spender</h4>
+            <form onSubmit={handleApprove} className="space-y-4">
+              <input 
+                required
+                placeholder="Spender Account or Address"
+                className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                onChange={(e) => setApproveData({...approveData, spender: e.target.value})}
+              />
+              <input 
+                required
+                placeholder="Amount to Limit"
+                type="number"
+                className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                onChange={(e) => setApproveData({...approveData, amount: e.target.value})}
+              />
+              <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">
+                {loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}
+              </button>
+            </form>
+          </motion.section>
+        )}
+
+        {/* TAB CONTENT: TRANSFER FROM */}
+        {activeTab === 'transferFrom' && (
+          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
+            <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
+            <form onSubmit={handleTransferFrom} className="space-y-4">
+              <input required placeholder="From (Account or Address)" className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})}/>
+              <input required placeholder="To (Account or Address)" className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})}/>
+              <input required placeholder="Amount" type="number" className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})}/>
+              <button disabled={loading} className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all">
+                {loading ? 'EXECUTING...' : 'CONFIRM PULL'}
+              </button>
+            </form>
+          </motion.section>
+        )}
       </div>
       
+      {/* SEND OVERLAY (EXISTING) */}
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">

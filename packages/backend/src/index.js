@@ -259,58 +259,159 @@ app.get('/api/balance/:address', async (req, res) => {
 // ===============================================
 // TRANSFER (Gelato-sponsored)
 // ===============================================
+// UPDATED TRANSFER ROUTE: Captures recipient address for bidirectional history
 app.post('/api/transfer', async (req, res) => {
-  try {
-    const { ownerKey, ownerPrivateKey, userPrivateKey, safeAddress, toInput, amount } = req.body;
-    const signingKey = ownerKey || ownerPrivateKey || userPrivateKey;
-
-    if (!signingKey || !safeAddress || !toInput || !amount) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    const amountWei = ethers.parseUnits(amount.toString(), 6);
-    const isAccountNumber = toInput.length <= 11 && !toInput.startsWith('0x');
-
-    const result = await sponsorSafeTransfer(safeAddress, signingKey, toInput, amountWei, isAccountNumber);
-
-    const newTransaction = new Transaction({
-      fromAddress: safeAddress,
-      toAccountNumber: toInput,
-      amount: amount,
-      status: 'successful',
-      taskId: result.taskId,
-      date: new Date()
-    });
-    await newTransaction.save();
-
-    res.json({ success: true, message: "Transfer successful", taskId: result.taskId });
-  } catch (error) {
-    console.error("❌ Transfer failed:", error.message);
     try {
-      const failedTx = new Transaction({
-        fromAddress: req.body.safeAddress,
-        toAccountNumber: req.body.toInput,
-        amount: req.body.amount,
-        status: 'failed',
-        date: new Date()
-      });
-      await failedTx.save();
-    } catch (dbError) {}
-    res.status(500).json({ message: "Transfer failed", error: error.message });
-  }
+        const { userPrivateKey, safeAddress, toInput, amount } = req.body;
+        const signingKey = userPrivateKey;
+        const amountWei = ethers.parseUnits(amount.toString(), 6);
+        const isAccountNumber = toInput.length <= 11 && !toInput.startsWith('0x');
+
+        // Resolve recipient address for the database
+        let resolvedTo = toInput;
+        if (isAccountNumber) {
+            const recipientUser = await User.findOne({ accountNumber: toInput });
+            resolvedTo = recipientUser ? recipientUser.safeAddress : null;
+        }
+
+        const sender = await User.findOne({ safeAddress });
+
+        const result = await sponsorSafeTransfer(safeAddress, signingKey, toInput, amountWei, isAccountNumber);
+
+        const newTransaction = new Transaction({
+            fromAddress: safeAddress,
+            fromAccountNumber: sender ? sender.accountNumber : null,
+            toAddress: resolvedTo,
+            toAccountNumber: toInput,
+            amount: amount,
+            status: 'successful',
+            taskId: result.taskId,
+            date: new Date()
+        });
+        await newTransaction.save();
+
+        res.json({ success: true, taskId: result.taskId });
+    } catch (error) {
+        res.status(500).json({ message: "Transfer failed", error: error.message });
+    }
+});
+
+// ===============================================
+// NEW: APPROVE ROUTE (Gasless via Gelato)
+// ===============================================
+app.post('/api/approve', async (req, res) => {
+    try {
+        const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
+        const signingKey = userPrivateKey;
+        const amountWei = ethers.parseUnits(amount.toString(), 6);
+        
+        // 1. Determine if spender is Account Number or Address
+        const isAccountNumber = spenderInput.length <= 11 && !spenderInput.startsWith('0x');
+        
+        console.log(`Approving ${amount} NGNs for ${spenderInput}...`);
+
+        // 2. Call the relay service (You will need to ensure sponsorSafeApprove exists in relayService.js)
+        // We use the same pattern as transfer but targeting the 'approve' function
+        const { sponsorSafeApprove } = require('./services/relayService'); 
+        const result = await sponsorSafeApprove(
+            safeAddress, 
+            signingKey, 
+            spenderInput, 
+            amountWei, 
+            isAccountNumber
+        );
+
+        // 3. Log the interaction (Optional: you can create a specific 'Approval' model if needed)
+        res.json({ 
+            success: true, 
+            message: "Approval transaction relayed", 
+            taskId: result.taskId 
+        });
+    } catch (error) {
+        console.error("❌ Approval failed:", error);
+        res.status(500).json({ message: "Approval failed", error: error.message });
+    }
 });
 
 // ===============================================
 // GET TRANSACTIONS
 // ===============================================
+// UPDATED: GET TRANSACTIONS (Now finds Sent AND Received)
 app.get('/api/transactions/:address', async (req, res) => {
-  try {
-    const { address } = req.params;
-    const transactions = await Transaction.find({ fromAddress: address }).sort({ date: -1 }).limit(100);
-    res.json(transactions);
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch transactions" });
-  }
+    try {
+        const { address } = req.params;
+        // Search for txs where user is sender OR receiver
+        const transactions = await Transaction.find({
+            $or: [
+                { fromAddress: address },
+                { toAddress: address }
+            ]
+        }).sort({ date: -1 }).limit(50);
+
+        // Map to identify if it was 'sent' or 'received' for the UI
+        const formatted = transactions.map(tx => {
+            const isReceived = tx.toAddress?.toLowerCase() === address.toLowerCase();
+            return {
+                ...tx._doc,
+                displayType: isReceived ? 'receive' : 'sent',
+                displayPartner: isReceived ? (tx.fromAccountNumber || tx.fromAddress) : tx.toAccountNumber
+            };
+        });
+
+        res.json(formatted);
+    } catch (error) {
+        res.status(500).json([]);
+    }
+});
+
+// ===============================================
+// NEW: TRANSFER FROM ROUTE (Gasless via Gelato)
+// ===============================================
+app.post('/api/transferFrom', async (req, res) => {
+    try {
+        const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
+        const signingKey = userPrivateKey;
+        const amountWei = ethers.parseUnits(amount.toString(), 6);
+
+        console.log(`Executing TransferFrom: Pulling ${amount} from ${fromInput} to ${toInput}`);
+
+        // Call the relay service for transferFrom
+        const { sponsorSafeTransferFrom } = require('./services/relayService');
+        const result = await sponsorSafeTransferFrom(
+            safeAddress,
+            signingKey,
+            fromInput,
+            toInput,
+            amountWei
+        );
+
+        // Resolve addresses for DB logging
+        const fromUser = await User.findOne({ 
+            $or: [{ safeAddress: fromInput }, { accountNumber: fromInput }] 
+        });
+        const toUser = await User.findOne({ 
+            $or: [{ safeAddress: toInput }, { accountNumber: toInput }] 
+        });
+
+        // Save to Transaction History
+        const newTransaction = new Transaction({
+            fromAddress: fromUser ? fromUser.safeAddress : fromInput,
+            fromAccountNumber: fromUser ? fromUser.accountNumber : null,
+            toAddress: toUser ? toUser.safeAddress : toInput,
+            toAccountNumber: toInput,
+            amount: amount,
+            status: 'successful',
+            type: 'transferFrom',
+            taskId: result.taskId,
+            date: new Date()
+        });
+        await newTransaction.save();
+
+        res.json({ success: true, taskId: result.taskId });
+    } catch (error) {
+        console.error("❌ TransferFrom failed:", error);
+        res.status(500).json({ message: "TransferFrom failed", error: error.message });
+    }
 });
 
 // ===============================================
