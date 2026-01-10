@@ -1,11 +1,12 @@
 // Dashboard.jsx - SALVA DIGITAL TECH STABLECOIN DASHBOARD
+
 import { API_BASE_URL } from '../config';
+import salvaLogo from '../assets/salva-logo.png';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 import Stars from '../components/Stars';
-import salvaLogo from '../assets/salva-logo.png';
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -175,10 +176,10 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
-      {/* BRANDING: Big S logo with smaller SALVA text */}
+      {/* Logo and SALVA branding - Logo on the left, bigger than text */}
       <div className="absolute top-6 left-6 flex items-center gap-2 z-50 pointer-events-none">
-        <img src={salvaLogo} alt="S" className="w-16 h-16 sm:w-20 sm:h-20 object-contain" />
-        <span className="text-base sm:text-lg font-black tracking-tighter text-black dark:text-white">SALVA</span>
+        <img src={salvaLogo} alt="S" className="w-12 h-12 object-contain" />
+        <span className="text-lg font-black tracking-tighter text-black dark:text-white">SALVA</span>
       </div>
 
       <Stars />
@@ -230,7 +231,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div 
+        <div
           onClick={() => {
             navigator.clipboard.writeText(user.safeAddress);
             showMsg("Wallet address copied!");
@@ -254,8 +255,8 @@ const Dashboard = () => {
           <div className="space-y-3">
             {transactions.length > 0 ? (
               transactions.slice(0, 3).map((tx, i) => (
-                <div 
-                  key={i} 
+                <div
+                  key={i}
                   onClick={() => navigate('/transactions')}
                   className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4"
                 >
@@ -267,8 +268,8 @@ const Dashboard = () => {
                     <p className={`font-black text-sm sm:text-base ${tx.type === 'receive' ? 'text-green-400' : 'text-red-400'}`}>
                       {tx.type === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}
                     </p>
-                    <button 
-                      onClick={(e) => downloadReceipt(e, tx)} 
+                    <button
+                      onClick={(e) => downloadReceipt(e, tx)}
                       className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter"
                     >
                       Receipt ↓
@@ -282,7 +283,7 @@ const Dashboard = () => {
           </div>
         </section>
       </div>
-
+      
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
@@ -352,7 +353,7 @@ const Dashboard = () => {
 
       <AnimatePresence>
         {notification.show && (
-          <motion.div 
+          <motion.div
             initial={{ y: 100, x: "-50%", opacity: 0 }}
             animate={{ y: 0, x: "-50%", opacity: 1 }}
             exit={{ y: 100, x: "-50%", opacity: 0 }}
