@@ -1,3 +1,4 @@
+// index.js
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');
@@ -154,6 +155,8 @@ async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
 // ===============================================
 // REGISTRATION - Relayed via Gelato Gas Tank
 // ===============================================
+// index.js
+
 app.post('/api/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -163,33 +166,32 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ message: "Email already registered" });
     }
 
+    // 1. Generate and Deploy Safe (Backend pays gas)
     console.log("🚀 Generating Safe Wallet & Deploying...");
     const identityData = await generateAndDeploySalvaIdentity(process.env.BASE_SEPOLIA_RPC_URL);
 
-    console.log("📝 Registering account on-chain via Gelato Gas Tank...");
-
-    // Prepare Registration for Gelato Gas Tank
+    // 2. Register on-chain using the MANAGER wallet (NOT Gelato)
+    console.log("📝 Registering account via Backend Manager wallet...");
+    
+    // We use the 'wallet' instance from your walletSigner.js (which uses MANAGER_PRIVATE_KEY)
     const REGISTRY_ABI = ["function registerNumber(uint128,address)"];
-    const iface = new ethers.Interface(REGISTRY_ABI);
-    const data = iface.encodeFunctionData("registerNumber", [
-      identityData.accountNumber,
-      identityData.safeAddress
-    ]);
-
-    // Send Sponsored Call (Using GELATO_RELAY_API_KEY for Gas Tank)
-    const relayRequest = {
-      chainId: BigInt(process.env.CHAIN_ID || 84532), 
-      target: process.env.REGISTRY_CONTRACT_ADDRESS,
-      data: data
-    };
-
-    const relayResponse = await relay.sponsoredCall(
-      relayRequest,
-      process.env.GELATO_RELAY_API_KEY
+    const registryContract = new ethers.Contract(
+      process.env.REGISTRY_CONTRACT_ADDRESS,
+      REGISTRY_ABI,
+      wallet // This is your backend signer
     );
 
-    console.log("✅ Gelato Task Created! Task ID:", relayResponse.taskId);
+    // Send direct transaction from backend
+    const tx = await registryContract.registerNumber(
+      identityData.accountNumber,
+      identityData.safeAddress
+    );
+    
+    console.log(`⏳ Registration TX sent: ${tx.hash}`);
+    await tx.wait(); // Wait for 1 confirmation
+    console.log("✅ On-chain Registration Successful!");
 
+    // 3. Save to Database
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       username,
@@ -208,7 +210,7 @@ app.post('/api/register', async (req, res) => {
       safeAddress: newUser.safeAddress,
       accountNumber: newUser.accountNumber,
       ownerPrivateKey: newUser.ownerPrivateKey,
-      taskId: relayResponse.taskId 
+      registrationTx: tx.hash 
     });
 
   } catch (error) {
