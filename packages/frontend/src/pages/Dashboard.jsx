@@ -1,7 +1,5 @@
 // Dashboard.jsx - SALVA DIGITAL TECH STABLECOIN DASHBOARD
-
 import { API_BASE_URL } from '../config';
-import salvaLogo from '../assets/salva-logo.png';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
@@ -176,12 +174,6 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
-      {/* Top Logo + SALVA branding */}
-      <div className="absolute top-6 left-6 flex items-center gap-2 z-50">
-        <img src={salvaLogo} alt="S" className="w-10 h-10 object-contain" />
-        <span className="text-base font-black tracking-tight text-black dark:text-white">SALVA</span>
-      </div>
-
       <Stars />
 
       <div className="max-w-4xl mx-auto relative z-10">

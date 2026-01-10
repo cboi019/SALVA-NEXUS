@@ -1,7 +1,8 @@
-// Navbar.jsx - FIXED WITH COOL THEME TOGGLE
+// Navbar.jsx 
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import salvaLogo from '../assets/salva-logo.png';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -51,8 +52,11 @@ const Navbar = () => {
 
   return (
     <nav className="fixed top-0 w-full z-50 px-8 py-6 flex justify-between items-center backdrop-blur-md border-b border-gray-200/10 dark:border-white/5">
-      <Link to="/" className="text-2xl font-black tracking-tighter text-black dark:text-white transition-colors">
-        SALVA<span className="text-salvaGold">.</span>
+      <Link to="/" className="flex items-center gap-2 transition-colors">
+        <img src={salvaLogo} alt="S" className="w-8 h-8 object-contain" />
+        <span className="text-2xl font-black tracking-tighter text-black dark:text-white">
+          SALVA<span className="text-salvaGold">.</span>
+        </span>
       </Link>
       
       <div className="flex items-center gap-8">
