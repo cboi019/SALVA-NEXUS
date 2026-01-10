@@ -1,8 +1,7 @@
-// Navbar.jsx 
+// Navbar.jsx - FIXED WITH COOL THEME TOGGLE
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import salvaLogo from '../assets/salva-logo.png';
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -51,49 +50,37 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center backdrop-blur-md border-b border-gray-200/10 dark:border-white/5">
-      {/* BRANDING SECTION */}
-      <Link to="/" className="flex items-center group">
-        <div className="relative flex items-center">
-          {/* THE BIG S */}
-          <img 
-            src={salvaLogo} 
-            alt="S" 
-            className="w-14 h-14 sm:w-16 sm:h-16 object-contain transition-transform group-hover:scale-110" 
-          />
-          {/* THE SALVA TEXT - Pushed close to the S */}
-          <span className="text-xl sm:text-2xl font-black tracking-tighter text-black dark:text-white ml-[-4px]">
-            SALVA<span className="text-salvaGold">.</span>
-          </span>
-        </div>
+    <nav className="fixed top-0 w-full z-50 px-8 py-6 flex justify-between items-center backdrop-blur-md border-b border-gray-200/10 dark:border-white/5">
+      <Link to="/" className="text-2xl font-black tracking-tighter text-black dark:text-white transition-colors">
+        SALVA<span className="text-salvaGold">.</span>
       </Link>
       
-      <div className="flex items-center gap-6 sm:gap-8">
+      <div className="flex items-center gap-8">
         {!isLoggedIn ? (
           <Link 
             to="/login" 
-            className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-black dark:text-white opacity-60 hover:opacity-100 transition-opacity"
+            className="text-xs font-bold uppercase tracking-[0.2em] text-black dark:text-white opacity-60 hover:opacity-100 transition-opacity"
           >
             Login
           </Link>
         ) : (
           <button 
             onClick={handleLogout}
-            className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-red-500 opacity-80 hover:opacity-100 transition-opacity"
+            className="text-xs font-bold uppercase tracking-[0.2em] text-red-500 opacity-80 hover:opacity-100 transition-opacity"
           >
             Logout
           </button>
         )}
 
-        <div className="flex items-center gap-4 pl-4 sm:pl-6 border-l border-gray-200 dark:border-white/10">
-          <span className="text-[10px] uppercase tracking-widest opacity-40 font-black hidden md:block text-black dark:text-white">
+        <div className="flex items-center gap-4 pl-6 border-l border-gray-200 dark:border-white/10">
+          <span className="text-[10px] uppercase tracking-widest opacity-40 font-black hidden sm:block text-black dark:text-white">
             {darkMode ? 'Dark' : 'Light'}
           </span>
           
           <button 
             onClick={() => setDarkMode(!darkMode)}
             aria-label="Toggle Dark Mode"
-            className="relative w-12 h-6 sm:w-14 sm:h-7 rounded-full transition-all duration-300 shadow-md dark:shadow-salvaGold/20"
+            className="relative w-14 h-7 rounded-full transition-all duration-300 shadow-md dark:shadow-salvaGold/20"
             style={{
               background: darkMode 
                 ? 'linear-gradient(135deg, #1a1a1b 0%, #2d2d30 100%)'
@@ -101,16 +88,16 @@ const Navbar = () => {
             }}
           >
             <motion.div 
-              animate={{ x: darkMode ? 24 : 2 }}
+              animate={{ x: darkMode ? 28 : 2 }}
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              className="absolute top-0.5 w-5 h-5 rounded-full flex items-center justify-center"
+              className="absolute top-1 w-5 h-5 rounded-full flex items-center justify-center"
               style={{
                 background: darkMode
                   ? 'radial-gradient(circle, #d4af37 0%, #c9a22e 100%)'
                   : '#ffffff',
                 boxShadow: darkMode 
-                  ? '0 0 10px rgba(212, 175, 55, 0.6)' 
-                  : '0 2px 4px rgba(0, 0, 0, 0.1)'
+                  ? '0 0 10px rgba(212, 175, 55, 0.6), 0 0 20px rgba(212, 175, 55, 0.3)'
+                  : '0 2px 8px rgba(0, 0, 0, 0.15)'
               }}
             >
               {darkMode ? (
