@@ -9,8 +9,8 @@ import Stars from '../components/Stars';
 const Transactions = () => {
   const [user, setUser] = useState(null);
   const [transactions, setTransactions] = useState([]);
-  const [groupedTxs, setGroupedTxs] = useState({}); // Nested: { Year: { Month: { Day: [txs] } } }
-  const [expanded, setExpanded] = useState({}); // Tracks expanded state for years, months, and days
+  const [groupedTxs, setGroupedTxs] = useState({}); 
+  const [expanded, setExpanded] = useState({}); 
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
 
@@ -36,7 +36,6 @@ const Transactions = () => {
     }
   }, [notification]);
 
-  // DEEP GROUPING LOGIC
   useEffect(() => {
     const grouped = {};
     transactions.forEach(tx => {
@@ -53,7 +52,6 @@ const Transactions = () => {
     });
     setGroupedTxs(grouped);
 
-    // Auto-expand current year/month/day by default
     const now = new Date();
     const currYear = now.getFullYear().toString();
     const currMonth = now.toLocaleDateString('en-US', { month: 'long' });
@@ -85,6 +83,8 @@ const Transactions = () => {
     const doc = new jsPDF();
     const gold = [212, 175, 55];
     const dark = [10, 10, 11];
+    const isReceived = tx.displayType === 'receive';
+
     doc.setFillColor(dark[0], dark[1], dark[2]);
     doc.rect(0, 0, 210, 297, 'F');
     doc.setDrawColor(gold[0], gold[1], gold[2]);
@@ -104,12 +104,15 @@ const Transactions = () => {
     doc.text("AMOUNT", 40, 90);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
-    doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
+    doc.text(`${isReceived ? '+' : '-'}${formatNumber(tx.amount)} NGNs`, 40, 102);
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
-    doc.text("RECIPIENT ACCOUNT", 40, 125);
+    
+    // Receipt label update
+    doc.text(isReceived ? "SENDER ACCOUNT" : "RECIPIENT ACCOUNT", 40, 125);
     doc.setTextColor(255, 255, 255);
-    doc.text(tx.toAccountNumber || 'N/A', 40, 135);
+    doc.text(tx.displayPartner || 'N/A', 40, 135);
+    
     doc.setTextColor(150, 150, 150);
     doc.text("DATE & TIME", 40, 155);
     doc.setTextColor(255, 255, 255);
@@ -125,7 +128,6 @@ const Transactions = () => {
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-32 px-6 relative overflow-hidden font-sans">
       <Stars />
-      
       <div className="max-w-4xl mx-auto relative z-10">
         <Link to="/dashboard" className="inline-flex items-center gap-2 text-xs uppercase tracking-widest text-salvaGold hover:opacity-60 mb-8 font-bold">
           ← Back to Dashboard
@@ -142,7 +144,6 @@ const Transactions = () => {
           </div>
         ) : Object.keys(groupedTxs).length > 0 ? (
           <div className="space-y-4">
-            {/* YEAR LEVEL */}
             {Object.entries(groupedTxs).sort().reverse().map(([year, months]) => (
               <div key={year} className="mb-4">
                 <button onClick={() => toggle(year)} className="w-full flex items-center gap-4 mb-2">
@@ -153,7 +154,6 @@ const Transactions = () => {
 
                 {expanded[year] && (
                   <div className="pl-2 sm:pl-6 space-y-4 border-l border-salvaGold/10 ml-2">
-                    {/* MONTH LEVEL */}
                     {Object.entries(months).map(([month, days]) => {
                       const monthKey = `${year}-${month}`;
                       return (
@@ -165,7 +165,6 @@ const Transactions = () => {
 
                           {expanded[monthKey] && (
                             <div className="mt-3 space-y-3 pl-2 sm:pl-4">
-                              {/* DAY LEVEL */}
                               {Object.entries(days).map(([dayKey, dayTxs]) => (
                                 <div key={dayKey} className="border border-gray-200 dark:border-white/5 rounded-2xl overflow-hidden">
                                   <button onClick={() => toggle(dayKey)} className="w-full p-4 flex justify-between items-center bg-white dark:bg-zinc-900/50 hover:bg-salvaGold/5">
@@ -177,17 +176,25 @@ const Transactions = () => {
                                     <div className="p-3 space-y-2 bg-gray-50 dark:bg-black/20">
                                       {dayTxs.map((tx, i) => {
                                         const isSuccessful = tx.status?.toLowerCase().includes('success');
+                                        const isReceived = tx.displayType === 'receive';
                                         return (
                                           <motion.div key={tx._id || i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 rounded-xl bg-white dark:bg-white/5 border border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                             <div className="flex items-center gap-3">
-                                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isSuccessful ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'}`}>{isSuccessful ? '✓' : '✗'}</div>
+                                              <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${isSuccessful ? (isReceived ? 'bg-green-500/10 text-green-400' : 'bg-blue-500/10 text-blue-400') : 'bg-red-500/10 text-red-400'}`}>{isSuccessful ? '✓' : '✗'}</div>
                                               <div>
-                                                <p className="text-sm font-bold truncate max-w-[150px]">To: {tx.toAccountNumber}</p>
+                                                {/* FIXED LABEL AND PARTNER */}
+                                                <p className="text-sm font-bold truncate max-w-[200px]">
+                                                  <span className="opacity-50 mr-1">{isReceived ? 'From:' : 'To:'}</span> 
+                                                  {tx.displayPartner}
+                                                </p>
                                                 <p className="text-[10px] opacity-40 font-bold">{new Date(tx.date).toLocaleTimeString()}</p>
                                               </div>
                                             </div>
                                             <div className="flex items-center gap-4 w-full sm:w-auto justify-between">
-                                              <p className="font-black text-lg">-{formatNumber(tx.amount)}</p>
+                                              {/* FIXED AMOUNT COLOR AND SIGN */}
+                                              <p className={`font-black text-lg ${isReceived ? 'text-green-500' : ''}`}>
+                                                {isReceived ? '+' : '-'}{formatNumber(tx.amount)}
+                                              </p>
                                               {isSuccessful && (
                                                 <button onClick={() => downloadReceipt(tx)} className="text-[10px] text-salvaGold font-black uppercase border border-salvaGold/30 px-3 py-1 rounded-lg hover:bg-salvaGold hover:text-black">Receipt</button>
                                               )}
