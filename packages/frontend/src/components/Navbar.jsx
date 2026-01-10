@@ -52,9 +52,12 @@ const Navbar = () => {
 
   return (
     <nav className="fixed top-0 w-full z-50 px-8 py-6 flex justify-between items-center backdrop-blur-md border-b border-gray-200/10 dark:border-white/5">
-      <Link to="/" className="flex items-center gap-2 transition-colors">
-        <img src={salvaLogo} alt="S" className="w-8 h-8 object-contain" />
-        <span className="text-2xl font-black tracking-tighter text-black dark:text-white">
+      <Link to="/" className="flex items-center gap-1 transition-all hover:scale-105 duration-300">
+        <div className="relative">
+          <div className="absolute inset-0 bg-salvaGold/30 blur-xl rounded-full"></div>
+          <img src={salvaLogo} alt="S" className="w-12 h-12 object-contain relative z-10 drop-shadow-[0_0_15px_rgba(212,175,55,0.6)]" />
+        </div>
+        <span className="text-xl font-black tracking-tight text-black dark:text-white">
           SALVA<span className="text-salvaGold">.</span>
         </span>
       </Link>
