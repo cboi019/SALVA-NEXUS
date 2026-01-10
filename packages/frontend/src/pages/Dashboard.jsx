@@ -2,9 +2,10 @@
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom'; // Added useNavigate
 import { jsPDF } from "jspdf";
 import Stars from '../components/Stars';
+import salvaLogo from '../assets/salva-logo.png'; // IMPORTED LOGO
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
@@ -16,6 +17,8 @@ const Dashboard = () => {
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
   const [amountError, setAmountError] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
+
+  const navigate = useNavigate(); // Hook for redirection
 
   useEffect(() => {
     const savedUser = localStorage.getItem('salva_user');
@@ -79,7 +82,8 @@ const Dashboard = () => {
       maximumFractionDigits: 2
     });
 
-  const downloadReceipt = (tx) => {
+  const downloadReceipt = (e, tx) => {
+    e.stopPropagation(); // Prevents redirection when clicking receipt
     const doc = new jsPDF();
     const gold = [212, 175, 55];
     const dark = [10, 10, 11];
@@ -175,9 +179,13 @@ const Dashboard = () => {
 
       <div className="max-w-4xl mx-auto relative z-10">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-12">
-          <div>
-            <p className="text-[10px] uppercase tracking-widest text-salvaGold font-bold">Salva Citizen</p>
-            <h2 className="text-3xl sm:text-4xl font-black truncate max-w-[200px] sm:max-w-none">{user.username}</h2>
+          <div className="flex items-center gap-4">
+            {/* ADDED LOGO: S is bigger than the text block */}
+            <img src={salvaLogo} alt="S" className="w-16 h-16 object-contain" />
+            <div>
+              <p className="text-[10px] uppercase tracking-widest text-salvaGold font-bold">Salva Citizen</p>
+              <h2 className="text-3xl sm:text-4xl font-black truncate max-w-[200px] sm:max-w-none">{user.username}</h2>
+            </div>
           </div>
           <div className="bg-gray-100 dark:bg-white/5 p-4 rounded-2xl w-full sm:w-auto">
             <p className="text-[10px] uppercase opacity-40 font-bold">Account Number</p>
@@ -220,7 +228,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* WALLET ADDRESS SECTION - ADDED BACK & RESPONSIVE */}
         <div 
           onClick={() => {
             navigator.clipboard.writeText(user.safeAddress);
@@ -244,8 +251,13 @@ const Dashboard = () => {
           
           <div className="space-y-3">
             {transactions.length > 0 ? (
-              transactions.slice(0, 5).map((tx, i) => (
-                <div key={i} className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/20 transition-all gap-4">
+              // FIXED: slice(0, 3) and added onClick to navigate
+              transactions.slice(0, 3).map((tx, i) => (
+                <div 
+                  key={i} 
+                  onClick={() => navigate('/transactions')}
+                  className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4"
+                >
                   <div className="min-w-0">
                     <p className="font-bold text-sm sm:text-base truncate">{tx.type === 'receive' ? 'Received' : 'Sent'}</p>
                     <p className="text-[10px] sm:text-xs opacity-40 font-medium">{new Date(tx.date).toLocaleDateString()}</p>
@@ -254,7 +266,10 @@ const Dashboard = () => {
                     <p className={`font-black text-sm sm:text-base ${tx.type === 'receive' ? 'text-green-400' : 'text-red-400'}`}>
                       {tx.type === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}
                     </p>
-                    <button onClick={() => downloadReceipt(tx)} className="text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter">
+                    <button 
+                      onClick={(e) => downloadReceipt(e, tx)} 
+                      className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter"
+                    >
                       Receipt ↓
                     </button>
                   </div>
@@ -266,7 +281,7 @@ const Dashboard = () => {
           </div>
         </section>
       </div>
-
+      
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">

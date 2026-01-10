@@ -1,3 +1,4 @@
+// Home.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, useSpring, useTransform, animate } from 'framer-motion';
 import Stars from '../components/Stars';
