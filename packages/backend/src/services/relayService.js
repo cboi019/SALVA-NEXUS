@@ -75,6 +75,19 @@ async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWe
     const fromTarget = formatTarget(from);
     const toTarget = formatTarget(to);
 
+    // Check if either is a BigInt (Account Number)
+    const isFromAlias = typeof fromTarget === 'bigint';
+    const isToAlias = typeof toTarget === 'bigint';
+
+    let functionName = "transferFrom";
+    let abi = ["function transferFrom(address,address,uint256)"];
+
+    if (isFromAlias || isToAlias) {
+        // Update this to match your specific contract function name for aliases
+        functionName = "transferFromViaAlias"; 
+        abi = ["function transferFromViaAlias(uint128,uint128,uint256)"];
+    }
+
     // Logic: If either is an Alias, use the Alias function. 
     // This assumes your contract has a 'transferFromViaAlias' or similar.
     // If your contract ONLY supports transferFrom(address, address, uint256), 
