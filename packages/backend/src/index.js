@@ -259,20 +259,22 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
-// NEW: GET APPROVALS (Check authorized spenders)
+// GET ACTIVE APPROVALS (The missing link)
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
     try {
         const { address } = req.params;
-        // The ERC-20 Approval event: Approval(owner, spender, value)
+        // ABI for the Approval event
         const TOKEN_ABI = ["event Approval(address indexed owner, address indexed spender, uint256 value)"];
         const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
 
-        // Filter for all Approval events where the user is the 'owner'
+        // We look for all Approval events where the current user is the 'owner'
         const filter = tokenContract.filters.Approval(address);
-        const events = await tokenContract.queryFilter(filter, -10000); // Look back ~10k blocks
+        
+        // Query the last 5000 blocks for these events
+        const events = await tokenContract.queryFilter(filter, -5000);
 
-        // Get the latest approval for each spender
+        // Create a map to keep only the latest allowance for each spender
         const latestApprovals = {};
         events.forEach(event => {
             const spender = event.args.spender;
@@ -280,15 +282,15 @@ app.get('/api/approvals/:address', async (req, res) => {
             latestApprovals[spender] = amount;
         });
 
-        // Convert object to array for the frontend
+        // Convert the map back to an array and filter out zero balances
         const formatted = Object.keys(latestApprovals).map(spender => ({
             spender,
             amount: latestApprovals[spender]
-        })).filter(a => parseFloat(a.amount) > 0); // Only show active ones
+        })).filter(a => parseFloat(a.amount) > 0);
 
         res.json(formatted);
     } catch (error) {
-        console.error("❌ Failed to fetch approvals:", error);
+        console.error("❌ Approval Fetch Error:", error);
         res.status(500).json([]);
     }
 });
