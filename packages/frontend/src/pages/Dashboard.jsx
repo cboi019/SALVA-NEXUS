@@ -2,7 +2,7 @@
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom'; // Added useNavigate
+import { Link, useNavigate } from 'react-router-dom';
 import { jsPDF } from "jspdf";
 import Stars from '../components/Stars';
 import salvaLogo from '../assets/salva-logo.png';
@@ -18,7 +18,7 @@ const Dashboard = () => {
   const [amountError, setAmountError] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
 
-  const navigate = useNavigate(); // Hook for redirection
+  const navigate = useNavigate();
 
   useEffect(() => {
     const savedUser = localStorage.getItem('salva_user');
@@ -83,7 +83,7 @@ const Dashboard = () => {
     });
 
   const downloadReceipt = (e, tx) => {
-    e.stopPropagation(); // Prevents redirection when clicking receipt
+    e.stopPropagation();
     const doc = new jsPDF();
     const gold = [212, 175, 55];
     const dark = [10, 10, 11];
@@ -175,10 +175,10 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
-      {/* BRANDING SECTION AT TOP LEFT */}
-      <div className="absolute top-8 left-8 flex items-center gap-2 z-50">
-        <img src={salvaLogo} alt="S" className="w-12 h-12 object-contain" />
-        <span className="text-xl font-black tracking-tighter">SALVA</span>
+      {/* BRANDING SECTION: S Logo is dominant, SALVA text follows */}
+      <div className="absolute top-6 left-6 flex items-center gap-3 z-50 pointer-events-none">
+        <img src={salvaLogo} alt="S" className="w-16 h-16 object-contain" />
+        <span className="text-2xl font-black tracking-tighter text-black dark:text-white">SALVA</span>
       </div>
 
       <Stars />
@@ -282,7 +282,7 @@ const Dashboard = () => {
           </div>
         </section>
       </div>
-      
+
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
