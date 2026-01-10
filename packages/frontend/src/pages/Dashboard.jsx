@@ -22,6 +22,9 @@ const Dashboard = () => {
   const [approveData, setApproveData] = useState({ spender: '', amount: '' });
   const [transferFromData, setTransferFromData] = useState({ from: '', to: '', amount: '' });
 
+  // STATE FOR AUTHORIZED LIST
+  const [approvals, setApprovals] = useState([]);
+
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -32,6 +35,7 @@ const Dashboard = () => {
         setUser(parsedUser);
         fetchBalance(parsedUser.safeAddress);
         fetchTransactions(parsedUser.safeAddress);
+        fetchApprovals(parsedUser.safeAddress);
       } catch (error) {
         window.location.href = '/login';
       }
@@ -77,6 +81,17 @@ const Dashboard = () => {
       setTransactions(Array.isArray(data) ? data : []);
     } catch {
       setTransactions([]);
+    }
+  };
+
+  const fetchApprovals = async (address) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/approvals/${address}`);
+      const data = await res.json();
+      // Filter out any approval that is 0
+      setApprovals(Array.isArray(data) ? data.filter(a => parseFloat(a.amount) > 0) : []);
+    } catch {
+      setApprovals([]);
     }
   };
 
@@ -175,7 +190,6 @@ const Dashboard = () => {
     }
   };
 
-  // NEW HANDLERS FOR APPROVE AND TRANSFERFROM
   const handleApprove = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -190,7 +204,11 @@ const Dashboard = () => {
                 amount: approveData.amount
             })
         });
-        if (response.ok) showMsg("Approval updated on-chain!");
+        if (response.ok) {
+            showMsg("Approval updated on-chain!");
+            setApproveData({ spender: '', amount: '' });
+            setTimeout(() => fetchApprovals(user.safeAddress), 3000);
+        }
         else showMsg("Approval failed", "error");
     } catch (err) { showMsg("Connection error", "error"); }
     setLoading(false);
@@ -285,7 +303,6 @@ const Dashboard = () => {
           </p>
         </div>
 
-        {/* UPDATED TAB NAVIGATION */}
         <div className="flex border-b border-white/10 mb-6 gap-8 overflow-x-auto no-scrollbar">
           {['activity', 'approve', 'transferFrom'].map((tab) => (
             <button
@@ -300,7 +317,6 @@ const Dashboard = () => {
           ))}
         </div>
 
-        {/* TAB CONTENT: ACTIVITY (Updated for Bidirectional) */}
         {activeTab === 'activity' && (
           <section className="px-1">
             <div className="flex justify-between items-end mb-6">
@@ -344,32 +360,70 @@ const Dashboard = () => {
           </section>
         )}
 
-        {/* TAB CONTENT: APPROVE */}
+        {/* TAB CONTENT: APPROVE - SPLIT VIEW IMPLEMENTATION */}
         {activeTab === 'approve' && (
-          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
-            <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Authorize Spender</h4>
-            <form onSubmit={handleApprove} className="space-y-4">
-              <input 
-                required
-                placeholder="Spender Account or Address"
-                className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
-                onChange={(e) => setApproveData({...approveData, spender: e.target.value})}
-              />
-              <input 
-                required
-                placeholder="Amount to Limit"
-                type="number"
-                className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
-                onChange={(e) => setApproveData({...approveData, amount: e.target.value})}
-              />
-              <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">
-                {loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}
-              </button>
-            </form>
+          <motion.section 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            className="grid grid-cols-1 md:grid-cols-2 gap-6"
+          >
+            {/* LEFT SIDE: THE FORM */}
+            <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
+              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Update Permission</h4>
+              <form onSubmit={handleApprove} className="space-y-4">
+                <input 
+                  required
+                  placeholder="Spender Account or Address"
+                  value={approveData.spender}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) => setApproveData({...approveData, spender: e.target.value})}
+                />
+                <input 
+                  required
+                  placeholder="Amount to Limit"
+                  type="number"
+                  value={approveData.amount}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) => setApproveData({...approveData, amount: e.target.value})}
+                />
+                <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">
+                  {loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}
+                </button>
+              </form>
+            </div>
+
+            {/* RIGHT SIDE: THE LIST */}
+            <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 overflow-hidden flex flex-col">
+              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Active Permissions</h4>
+              <div className="space-y-3 overflow-y-auto max-h-[250px] pr-2 custom-scrollbar">
+                {approvals.length > 0 ? (
+                  approvals.map((app, i) => (
+                    <div key={i} className="flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5">
+                       <div className="min-w-0 pr-2">
+                          <p className="font-mono text-[10px] text-salvaGold truncate">{app.spender}</p>
+                          <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Spender</p>
+                       </div>
+                       <div className="text-right flex-shrink-0">
+                          <p className="font-black text-xs">{formatNumber(app.amount)}</p>
+                          <button 
+                            onClick={() => setApproveData({ spender: app.spender, amount: '0' })}
+                            className="text-[8px] text-red-500 font-bold uppercase hover:underline"
+                          >
+                            Revoke
+                          </button>
+                       </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center py-10 opacity-20 text-[10px] uppercase font-bold tracking-widest leading-loose">
+                    No active<br/>approvals found
+                  </p>
+                )}
+              </div>
+            </div>
           </motion.section>
         )}
 
-        {/* TAB CONTENT: TRANSFER FROM */}
         {activeTab === 'transferFrom' && (
           <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
             <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
@@ -385,7 +439,6 @@ const Dashboard = () => {
         )}
       </div>
       
-      {/* SEND OVERLAY (EXISTING) */}
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">

@@ -259,6 +259,41 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
+// NEW: GET APPROVALS (Check authorized spenders)
+// ===============================================
+app.get('/api/approvals/:address', async (req, res) => {
+    try {
+        const { address } = req.params;
+        // The ERC-20 Approval event: Approval(owner, spender, value)
+        const TOKEN_ABI = ["event Approval(address indexed owner, address indexed spender, uint256 value)"];
+        const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+
+        // Filter for all Approval events where the user is the 'owner'
+        const filter = tokenContract.filters.Approval(address);
+        const events = await tokenContract.queryFilter(filter, -10000); // Look back ~10k blocks
+
+        // Get the latest approval for each spender
+        const latestApprovals = {};
+        events.forEach(event => {
+            const spender = event.args.spender;
+            const amount = ethers.formatUnits(event.args.value, 6);
+            latestApprovals[spender] = amount;
+        });
+
+        // Convert object to array for the frontend
+        const formatted = Object.keys(latestApprovals).map(spender => ({
+            spender,
+            amount: latestApprovals[spender]
+        })).filter(a => parseFloat(a.amount) > 0); // Only show active ones
+
+        res.json(formatted);
+    } catch (error) {
+        console.error("❌ Failed to fetch approvals:", error);
+        res.status(500).json([]);
+    }
+});
+
+// ===============================================
 // TRANSFER (Gelato-sponsored)
 // ===============================================
 // UPDATED TRANSFER ROUTE: Captures recipient address for bidirectional history
