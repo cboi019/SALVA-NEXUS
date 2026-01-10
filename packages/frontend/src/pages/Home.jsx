@@ -1,6 +1,6 @@
-// Home.jsx
 import React, { useState, useEffect } from 'react';
-import { motion, useSpring, useTransform, animate } from 'framer-motion';
+import { motion, animate } from 'framer-motion';
+import { Twitter, Instagram, Github } from 'lucide-react'; // Ensure lucide-react is installed
 import Stars from '../components/Stars';
 
 // --- CountUp Component with Glow Pulse ---
@@ -104,7 +104,7 @@ const Home = () => {
         </motion.div>
       </section>
 
-      {/* Stats Section - Increased max-width to give cards more space */}
+      {/* Stats Section */}
       <motion.section {...fadeIn} className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10">
           <StatCard 
@@ -132,22 +132,63 @@ const Home = () => {
           align="right"
         />
       </section>
+
+      {/* --- NEW SOCIAL FOOTER AREA --- */}
+      <footer className="max-w-6xl mx-auto px-4 sm:px-6 py-20 border-t border-gray-100 dark:border-white/5">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+          <div className="text-center md:text-left">
+            <h2 className="text-2xl font-black tracking-tighter text-salvaGold">SALVA</h2>
+            <p className="text-[10px] uppercase tracking-[0.4em] opacity-40 font-bold mt-2">The Future of Nigerian Finance</p>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <SocialIcon 
+              href="https://x.com/salvaFinance?s=20" 
+              icon={<Twitter size={20} />} 
+              label="X (Twitter)" 
+            />
+            <SocialIcon 
+              href="https://x.com/salvaFinance?s=20" 
+              icon={<Instagram size={20} />} 
+              label="Instagram" 
+            />
+            <SocialIcon 
+              href="https://github.com/cboi019/SALVA-NEXUS.git" 
+              icon={<Github size={20} />} 
+              label="GitHub" 
+            />
+          </div>
+
+          <div className="text-[10px] uppercase tracking-widest opacity-30 font-bold">
+            © 2026 SALVA NEXUS
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };
 
-// Updated StatCard with optimized font sizing and width handling
+// Helper component for Social Links
+const SocialIcon = ({ href, icon, label }) => (
+  <motion.a
+    href={href}
+    target="_blank"
+    rel="noopener noreferrer"
+    whileHover={{ y: -4, color: "#D4AF37" }}
+    className="p-3 rounded-full bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 transition-colors duration-300 opacity-60 hover:opacity-100 flex items-center justify-center"
+    aria-label={label}
+  >
+    {icon}
+  </motion.a>
+);
+
 const StatCard = ({ title, value, suffix = "" }) => (
   <div className="group relative p-8 md:p-10 lg:p-12 rounded-3xl md:rounded-[3rem] border border-gray-100 dark:border-white/5 bg-gray-50/50 dark:bg-white/5 backdrop-blur-sm hover:border-salvaGold/50 transition-all duration-500 w-full flex flex-col justify-center overflow-hidden min-h-[180px]">
-    {/* Inner decorative glow */}
     <div className="absolute -inset-1 bg-gradient-to-r from-salvaGold/0 via-salvaGold/5 to-salvaGold/0 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-    
     <p className="relative z-10 text-[10px] sm:text-xs uppercase tracking-[0.3em] sm:tracking-[0.4em] text-salvaGold mb-4 md:mb-6 font-bold">
       {title}
     </p>
-    
     <div className="relative z-10 flex items-baseline flex-wrap">
-      {/* Reduced font size from lg:text-5xl/xl:text-6xl to lg:text-4xl/xl:text-5xl */}
       <h3 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-black tracking-tighter truncate max-w-full">
         {value}
       </h3>

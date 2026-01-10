@@ -89,9 +89,9 @@ const Dashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/approvals/${address}`);
       const data = await res.json();
       // Filter out any approval that is 0
-      setApprovals(Array.isArray(data) ? data.filter(a => parseFloat(a.amount) > 0) : []);
-    } catch {
-      setApprovals([]);
+      setApprovals(data);
+    } catch (eer) {
+      console.error("Failed to load list");
     }
   };
 

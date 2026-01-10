@@ -13,6 +13,7 @@ const Transaction = require('./models/Transaction');
 const mongoose = require('mongoose');
 const { Resend } = require('resend'); // UPDATED
 const { GelatoRelay } = require("@gelatonetwork/relay-sdk"); // UPDATED
+const Approval = require('./models/Approval'); // Import the model at the top
 
 // Initialize Resend and Gelato
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -258,39 +259,18 @@ app.get('/api/balance/:address', async (req, res) => {
   }
 });
 
-// ===============================================
-// GET ACTIVE APPROVALS (The missing link)
-// ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
     try {
         const { address } = req.params;
-        // ABI for the Approval event
-        const TOKEN_ABI = ["event Approval(address indexed owner, address indexed spender, uint256 value)"];
-        const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
-
-        // We look for all Approval events where the current user is the 'owner'
-        const filter = tokenContract.filters.Approval(address);
         
-        // Query the last 5000 blocks for these events
-        const events = await tokenContract.queryFilter(filter, -5000);
-
-        // Create a map to keep only the latest allowance for each spender
-        const latestApprovals = {};
-        events.forEach(event => {
-            const spender = event.args.spender;
-            const amount = ethers.formatUnits(event.args.value, 6);
-            latestApprovals[spender] = amount;
+        // Find all confirmed approvals for this user in our DB
+        const list = await Approval.find({ 
+            owner: address.toLowerCase(),
+            amount: { $ne: "0" } // Don't show revoked (0) permissions
         });
 
-        // Convert the map back to an array and filter out zero balances
-        const formatted = Object.keys(latestApprovals).map(spender => ({
-            spender,
-            amount: latestApprovals[spender]
-        })).filter(a => parseFloat(a.amount) > 0);
-
-        res.json(formatted);
+        res.json(list);
     } catch (error) {
-        console.error("❌ Approval Fetch Error:", error);
         res.status(500).json([]);
     }
 });
@@ -341,33 +321,21 @@ app.post('/api/transfer', async (req, res) => {
 app.post('/api/approve', async (req, res) => {
     try {
         const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
-        const signingKey = userPrivateKey;
         const amountWei = ethers.parseUnits(amount.toString(), 6);
         
-        // 1. Determine if spender is Account Number or Address
-        const isAccountNumber = spenderInput.length <= 11 && !spenderInput.startsWith('0x');
-        
-        console.log(`Approving ${amount} NGNs for ${spenderInput}...`);
-
-        // 2. Call the relay service (You will need to ensure sponsorSafeApprove exists in relayService.js)
-        // We use the same pattern as transfer but targeting the 'approve' function
+        // 1. Send to Blockchain
         const { sponsorSafeApprove } = require('./services/relayService'); 
-        const result = await sponsorSafeApprove(
-            safeAddress, 
-            signingKey, 
-            spenderInput, 
-            amountWei, 
-            isAccountNumber
+        const result = await sponsorSafeApprove(safeAddress, userPrivateKey, spenderInput, amountWei, false);
+
+        // 2. Save to your MongoDB (So the dashboard can see it instantly)
+        await Approval.findOneAndUpdate(
+            { owner: safeAddress.toLowerCase(), spender: spenderInput.toLowerCase() },
+            { amount: amount, date: new Date() },
+            { upsert: true } // Create if doesn't exist, update if it does
         );
 
-        // 3. Log the interaction (Optional: you can create a specific 'Approval' model if needed)
-        res.json({ 
-            success: true, 
-            message: "Approval transaction relayed", 
-            taskId: result.taskId 
-        });
+        res.json({ success: true, taskId: result.taskId });
     } catch (error) {
-        console.error("❌ Approval failed:", error);
         res.status(500).json({ message: "Approval failed", error: error.message });
     }
 });
