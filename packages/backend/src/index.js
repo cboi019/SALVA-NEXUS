@@ -7,13 +7,13 @@ const nodemailer = require('nodemailer');
 const { ethers } = require('ethers');
 const { wallet, provider } = require('./services/walletSigner');
 const { generateAndDeploySalvaIdentity } = require('./services/userService');
-const { sponsorSafeTransfer, sponsorSafeTransferFrom } = require('./services/relayService');
+const { sponsorSafeTransfer, sponsorSafeTransferFrom, sponsorSafeApprove } = require('./services/relayService');
 const User = require('./models/User');
 const Transaction = require('./models/Transaction');
 const mongoose = require('mongoose');
-const { Resend } = require('resend'); // UPDATED
-const { GelatoRelay } = require("@gelatonetwork/relay-sdk"); // UPDATED
-const Approval = require('./models/Approval'); // Import the model at the top
+const { Resend } = require('resend');
+const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
+const Approval = require('./models/Approval');
 
 // Initialize Resend and Gelato
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -33,7 +33,7 @@ app.use(express.json());
 // Temporary storage for OTPs
 const otpStore = {};
 
-// Nodemailer Setup (Keeping this for compatibility/test, but using Resend for OTP)
+// Nodemailer Setup
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 587,
@@ -62,10 +62,10 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.error('❌ MongoDB Connection Failed:', err));
 
 // ===============================================
-// AUTH & EMAIL ROUTES (Updated with Resend)
+// AUTH & EMAIL ROUTES
 // ===============================================
 
-// 1. SEND OTP (Now via Resend)
+// 1. SEND OTP
 app.post('/api/auth/send-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email required" });
@@ -73,11 +73,10 @@ app.post('/api/auth/send-otp', async (req, res) => {
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
   otpStore[email] = {
     code: otp,
-    expires: Date.now() + 600000 // 10 mins
+    expires: Date.now() + 600000
   };
 
   try {
-    // Using Resend for reliability
     const data = await resend.emails.send({
       from: 'Salva <onboarding@resend.dev>',
       to: email,
@@ -154,10 +153,26 @@ async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
 }
 
 // ===============================================
-// REGISTRATION - Relayed via Gelato Gas Tank
+// HELPER: Determine if input is Account Number or Address
 // ===============================================
-// index.js
+function isAccountNumber(input) {
+  return !input.startsWith('0x') && input.length <= 15;
+}
 
+// ===============================================
+// HELPER: Resolve User Data (Account Number or Address)
+// ===============================================
+async function resolveUser(input) {
+  if (isAccountNumber(input)) {
+    return await User.findOne({ accountNumber: input });
+  } else {
+    return await User.findOne({ safeAddress: input.toLowerCase() });
+  }
+}
+
+// ===============================================
+// REGISTRATION
+// ===============================================
 app.post('/api/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -167,32 +182,27 @@ app.post('/api/register', async (req, res) => {
       return res.status(400).json({ message: "Email already registered" });
     }
 
-    // 1. Generate and Deploy Safe (Backend pays gas)
     console.log("🚀 Generating Safe Wallet & Deploying...");
     const identityData = await generateAndDeploySalvaIdentity(process.env.BASE_SEPOLIA_RPC_URL);
 
-    // 2. Register on-chain using the MANAGER wallet (NOT Gelato)
     console.log("📝 Registering account via Backend Manager wallet...");
     
-    // We use the 'wallet' instance from your walletSigner.js (which uses MANAGER_PRIVATE_KEY)
     const REGISTRY_ABI = ["function registerNumber(uint128,address)"];
     const registryContract = new ethers.Contract(
       process.env.REGISTRY_CONTRACT_ADDRESS,
       REGISTRY_ABI,
-      wallet // This is your backend signer
+      wallet
     );
 
-    // Send direct transaction from backend
     const tx = await registryContract.registerNumber(
       identityData.accountNumber,
       identityData.safeAddress
     );
     
     console.log(`⏳ Registration TX sent: ${tx.hash}`);
-    await tx.wait(); // Wait for 1 confirmation
+    await tx.wait();
     console.log("✅ On-chain Registration Successful!");
 
-    // 3. Save to Database
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       username,
@@ -250,7 +260,6 @@ app.get('/api/balance/:address', async (req, res) => {
   try {
     const { address } = req.params;
     
-    // 1. ABI for checking balance
     const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(
       process.env.NGN_TOKEN_ADDRESS, 
@@ -258,240 +267,306 @@ app.get('/api/balance/:address', async (req, res) => {
       provider
     );
 
-    // 2. Fetch balance using your helper to prevent RPC blips
     const balanceWei = await retryRPCCall(async () => 
       await tokenContract.balanceOf(address)
     );
 
-    // 3. Format units (Using 6 decimals as per your other routes)
     const balance = ethers.formatUnits(balanceWei, 6);
     
     res.json({ balance });
   } catch (error) {
     console.error("❌ Balance Fetch Failed:", error.message);
-    // Return 0 so the UI doesn't crash, but log the error
     res.status(200).json({ balance: "0.00" });
   }
 });
 
+// ===============================================
+// GET APPROVALS
+// ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
-    try {
-        const ownerAddress = req.params.address;
-        const savedApprovals = await Approval.find({ owner: ownerAddress.toLowerCase() });
+  try {
+    const ownerAddress = req.params.address;
+    const savedApprovals = await Approval.find({ owner: ownerAddress.toLowerCase() });
+    
+    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
+    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+    
+    const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
+      try {
+        let spenderAddress = app.spender;
+        if (!app.spender.startsWith('0x')) {
+          const spenderUser = await User.findOne({ accountNumber: app.spender });
+          if (!spenderUser) return app;
+          spenderAddress = spenderUser.safeAddress;
+        }
+        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
+        const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
-        // Define the contract inside the route so it's always available
-        const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
-        const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
-        
-        // Map through saved spenders and get their LIVE blockchain allowance
-        const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
-            try {
-                // 1. RESOLVE: Check if 'app.spender' is an Account Number or Address
-                let spenderAddress = app.spender;
-                if (!app.spender.startsWith('0x')) {
-                    const spenderUser = await User.findOne({ accountNumber: app.spender });
-                    if (!spenderUser) return app; // Skip if user not found
-                     spenderAddress = spenderUser.safeAddress;
-                }
-                const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
-                const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
-                
-                if (parseFloat(liveAmount) <= 0) {
-                    // THE TRUTH: If it's 0, wipe it from the DB entirely
-                    await Approval.deleteOne({ _id: app._id });
-                    return null; 
-                }
-
-                // Sync the database if the spender has used some funds
-                if (liveAmount !== app.amount) {
-                    app.amount = liveAmount;
-                    await app.save();
-                }
-                return app;
-            } catch (err) {
-                console.error(`Allowance check failed for ${app.spender}:`, err.message);
-                return app; // Fallback to DB version if RPC fails
-            }
-        }));
-
-        // Only return spenders who still have a balance > 0
-        res.json(liveApprovals.filter(app => app !== null));
-    } catch (error) {
-        console.error("Critical Approval Route Error:", error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// ===============================================
-// TRANSFER (Gelato-sponsored)
-// ===============================================
-// UPDATED TRANSFER ROUTE: Captures recipient address for bidirectional history
-app.post('/api/transfer', async (req, res) => {
-    try {
-        const { userPrivateKey, safeAddress, toInput, amount } = req.body;
-        const signingKey = userPrivateKey;
-        const amountWei = ethers.parseUnits(amount.toString(), 6);
-        const isAccountNumber = toInput.length <= 11 && !toInput.startsWith('0x');
-
-        // Resolve recipient address for the database
-        let resolvedTo = toInput;
-        let resolvedToAccount = isAccountNumber ? toInput : null; // Track this
-
-        if (isAccountNumber) {
-            const recipientUser = await User.findOne({ accountNumber: toInput });
-            resolvedTo = recipientUser ? recipientUser.safeAddress : null;
-        } else {
-            // If they sent to a raw address, try to find the account number for the UI
-            const recipientUser = await User.findOne({ safeAddress: toInput.toLowerCase() });
-            if (recipientUser) resolvedToAccount = recipientUser.accountNumber;
+        if (parseFloat(liveAmount) <= 0) {
+          await Approval.deleteOne({ _id: app._id });
+          return null; 
         }
 
-        const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-        const result = await sponsorSafeTransfer(safeAddress, signingKey, toInput, amountWei, isAccountNumber);
+        if (liveAmount !== app.amount) {
+          app.amount = liveAmount;
+          await app.save();
+        }
+        return app;
+      } catch (err) {
+        console.error(`Allowance check failed for ${app.spender}:`, err.message);
+        return app;
+      }
+    }));
 
-        const newTransaction = new Transaction({
-            fromAddress: safeAddress.toLowerCase(),
-            fromAccountNumber: sender ? sender.accountNumber : null,
-            toAddress: resolvedTo ? resolvedTo.toLowerCase() : null,
-            toAccountNumber: toInput,
-            amount: amount,
-            status: 'successful',
-            taskId: result.taskId,
-            date: new Date()
-        });
-        await newTransaction.save();
-
-        res.json({ success: true, taskId: result.taskId });
-    } catch (error) {
-        res.status(500).json({ message: "Transfer failed", error: error.message });
-    }
+    res.json(liveApprovals.filter(app => app !== null));
+  } catch (error) {
+    console.error("Critical Approval Route Error:", error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // ===============================================
-// NEW: APPROVE ROUTE (Gasless via Gelato)
+// TRANSFER (Fixed - saves what was typed for display)
+// ===============================================
+app.post('/api/transfer', async (req, res) => {
+  try {
+    const { userPrivateKey, safeAddress, toInput, amount } = req.body;
+    const amountWei = ethers.parseUnits(amount.toString(), 6);
+
+    // Resolve sender
+    const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
+    if (!sender) {
+      return res.status(404).json({ message: "Sender not found" });
+    }
+
+    // Resolve recipient to get their address (needed for blockchain)
+    const recipient = await resolveUser(toInput);
+    const recipientAddress = recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
+
+    if (!recipientAddress && isAccountNumber(toInput)) {
+      return res.status(404).json({ message: "Recipient account number not found" });
+    }
+
+    // Execute blockchain transfer
+    const result = await sponsorSafeTransfer(
+      safeAddress, 
+      userPrivateKey, 
+      toInput, 
+      amountWei
+    );
+
+    // Verify the transaction actually succeeded
+    if (!result || !result.taskId) {
+      console.error("❌ Transfer failed: No taskId returned");
+      
+      // Save as FAILED for sender only
+      await new Transaction({
+        fromAddress: safeAddress.toLowerCase(),
+        fromAccountNumber: sender.accountNumber,
+        toAddress: recipientAddress,
+        toAccountNumber: toInput, // Save exactly what was typed
+        amount: amount,
+        status: 'failed',
+        taskId: null,
+        type: 'transfer',
+        date: new Date()
+      }).save();
+
+      return res.status(400).json({ 
+        success: false, 
+        message: "Transfer failed on blockchain" 
+      });
+    }
+
+    console.log("✅ Transfer successful with taskId:", result.taskId);
+
+    // Save SUCCESSFUL transaction
+    // KEY: toAccountNumber stores EXACTLY what the sender typed (account number OR address)
+    await new Transaction({
+      fromAddress: safeAddress.toLowerCase(),
+      fromAccountNumber: sender.accountNumber,
+      toAddress: recipientAddress,
+      toAccountNumber: toInput, // This is what was typed - could be account number or address
+      amount: amount,
+      status: 'successful',
+      taskId: result.taskId,
+      type: 'transfer',
+      date: new Date()
+    }).save();
+
+    res.json({ success: true, taskId: result.taskId });
+
+  } catch (error) {
+    console.error("❌ Transfer failed:", error.message);
+    
+    // Save as failed if exception occurs
+    try {
+      const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
+      const recipient = await resolveUser(req.body.toInput);
+      
+      await new Transaction({
+        fromAddress: req.body.safeAddress.toLowerCase(),
+        fromAccountNumber: sender ? sender.accountNumber : null,
+        toAddress: recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(req.body.toInput) ? null : req.body.toInput.toLowerCase()),
+        toAccountNumber: req.body.toInput, // Save what was typed
+        amount: req.body.amount,
+        status: 'failed',
+        taskId: null,
+        type: 'transfer',
+        date: new Date()
+      }).save();
+    } catch (dbError) {
+      console.error("Failed to save failed transaction:", dbError);
+    }
+
+    res.status(400).json({ 
+      success: false, 
+      message: "Transfer failed", 
+      error: error.message 
+    });
+  }
+});
+
+// ===============================================
+// APPROVE
 // ===============================================
 app.post('/api/approve', async (req, res) => {
-    try {
-        const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
-        const amountWei = ethers.parseUnits(amount.toString(), 6);
-        
-        // 1. Send to Blockchain
-        const { sponsorSafeApprove } = require('./services/relayService'); 
-        const result = await sponsorSafeApprove(safeAddress, userPrivateKey, spenderInput, amountWei, false);
+  try {
+    const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
+    const amountWei = ethers.parseUnits(amount.toString(), 6);
+    
+    const result = await sponsorSafeApprove(safeAddress, userPrivateKey, spenderInput, amountWei);
 
-        // 2. Save to your MongoDB (So the dashboard can see it instantly)
-        await Approval.findOneAndUpdate(
-            { owner: safeAddress.toLowerCase(), spender: spenderInput.toLowerCase() },
-            { amount: amount, date: new Date() },
-            { upsert: true } // Create if doesn't exist, update if it does
-        );
+    await Approval.findOneAndUpdate(
+      { owner: safeAddress.toLowerCase(), spender: spenderInput.toLowerCase() },
+      { amount: amount, date: new Date() },
+      { upsert: true }
+    );
 
-        res.json({ success: true, taskId: result.taskId });
-    } catch (error) {
-        res.status(500).json({ message: "Approval failed", error: error.message });
-    }
+    res.json({ success: true, taskId: result.taskId });
+  } catch (error) {
+    res.status(500).json({ message: "Approval failed", error: error.message });
+  }
 });
 
 // ===============================================
-// GET TRANSACTIONS
+// GET TRANSACTIONS (Fixed - shows what was originally typed)
 // ===============================================
 app.get('/api/transactions/:address', async (req, res) => {
-    try {
-        // 1. Normalize the incoming address to lowercase
-        const address = req.params.address.toLowerCase();
+  try {
+    const address = req.params.address.toLowerCase();
 
-        // 2. Search for successful transactions where the user is EITHER sender or receiver
-        const transactions = await Transaction.find({
-            $and: [
-                { status: 'successful' }, // Ensure we only show confirmed ones
-                { 
-                    $or: [
-                        { fromAddress: address }, 
-                        { toAddress: address }
-                    ] 
-                }
-            ]
-        }).sort({ date: -1 }).limit(50);
+    const transactions = await Transaction.find({
+      $and: [
+        { status: 'successful' },
+        { 
+          $or: [
+            { fromAddress: address }, 
+            { toAddress: address }
+          ] 
+        }
+      ]
+    }).sort({ date: -1 }).limit(50);
 
-        // 3. Format for the UI
-        const formatted = transactions.map(tx => {
-            const isReceived = tx.toAddress?.toLowerCase() === address;
-            return {
-                ...tx._doc,
-                displayType: isReceived ? 'receive' : 'sent',
-                // Fallback to address if account number isn't in the DB
-                displayPartner: isReceived 
-                    ? (tx.fromAccountNumber || tx.fromAddress) 
-                    : (tx.toAccountNumber || tx.toAddress)
-            };
-        });
+    const formatted = transactions.map(tx => {
+      const isReceived = tx.toAddress?.toLowerCase() === address;
+      
+      // FIXED DISPLAY LOGIC:
+      // Both sender and receiver should see what was originally typed
+      // toAccountNumber contains exactly what was typed (account number OR address)
+      
+      return {
+        ...tx._doc,
+        displayType: isReceived ? 'receive' : 'sent',
+        displayPartner: tx.toAccountNumber // Shows what was typed, whether account number or address
+      };
+    });
 
-        res.json(formatted);
-    } catch (error) {
-        console.error("❌ History Fetch Error:", error);
-        res.status(500).json([]);
-    }
+    res.json(formatted);
+  } catch (error) {
+    console.error("❌ History Fetch Error:", error);
+    res.status(500).json([]);
+  }
 });
 
 // ===============================================
-// NEW: TRANSFER FROM ROUTE (Gasless via Gelato)
+// TRANSFER FROM (Fixed - saves what was typed for display)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
-    try {
-        const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
-        const amountWei = ethers.parseUnits(amount.toString(), 6);
+  try {
+    const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
+    const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-        // 1. EXECUTE: Call the service ONLY once. 
-        // Ensure all Gelato logic (sign, create, execute) is inside this function.
-        const result = await sponsorSafeTransferFrom(
-            userPrivateKey,
-            safeAddress,
-            fromInput,
-            toInput,
-            amountWei
-        );
+    // Resolve all parties
+    const executor = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
+    const fromUser = await resolveUser(fromInput);
+    const toUser = await resolveUser(toInput);
 
-        // 2. VALIDATE: If the relay failed or the contract reverted, stop here.
-        if (!result || !result.taskId) {
-            console.error("❌ Relay declined the transaction. Likely a revert.");
-            return res.status(400).json({
-              success: false, 
-              message: "Transfer REVERTED: Check allowance or balance."
-            });
-        }
-
-        // 3. RESOLVE USERS: Get real data for the history log.
-        const fromUser = await User.findOne({ $or: [{ safeAddress: fromInput }, { accountNumber: fromInput }] });
-        const toUser = await User.findOne({
-          $or: [{ safeAddress: toInput }, { accountNumber: toInput }]
-        });
-
-        // 4. SAVE TO HISTORY: Only happens if the step above didn't fail.
-        await new Transaction({
-            fromAddress: fromUser ? fromUser.safeAddress.toLowerCase() : fromInput.toLowerCase(),
-            fromAccountNumber: fromUser ? fromUser.accountNumber : null,
-            toAddress: toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase(),
-            toAccountNumber: toUser ? toUser.accountNumber : toInput,
-            amount,
-            status: 'successful', 
-            type: 'transferFrom',
-            taskId: result.taskId,
-            date: new Date()
-        }).save();
-
-        res.json({ success: true, taskId: result.taskId });
-    } catch (error) {
-        console.error("❌ TransferFrom failed:", error.message);
-        // This ensures the frontend shows an ERROR notification instead of "Success".
-        res.status(400).json({
-            success: false, 
-            message: "Transfer failed: Check allowance or balance.", 
-            error: error.message 
-        });
+    if (!fromUser) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Source account not found" 
+      });
     }
+
+    if (!toUser && isAccountNumber(toInput)) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Destination account not found" 
+      });
+    }
+
+    const fromAddress = fromUser.safeAddress.toLowerCase();
+    const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
+
+    // Execute transferFrom on blockchain
+    const result = await sponsorSafeTransferFrom(
+      userPrivateKey,
+      safeAddress,
+      fromInput,
+      toInput,
+      amountWei
+    );
+
+    // Verify success
+    if (!result || !result.taskId) {
+      console.error("❌ TransferFrom REVERTED: No taskId returned");
+      return res.status(400).json({
+        success: false, 
+        message: "Transfer REVERTED: Check allowance or balance."
+      });
+    }
+
+    console.log("✅ TransferFrom successful with taskId:", result.taskId);
+
+    // Save SUCCESSFUL transaction
+    // KEY INSIGHT: Store what the puller (destination) actually typed
+    // - If they typed "1234567890" (account number), both histories show "1234567890"
+    // - If they typed "0xabc..." (address), both histories show "0xabc..."
+    await new Transaction({
+      fromAddress: fromAddress,
+      fromAccountNumber: fromUser.accountNumber,
+      toAddress: toAddress,
+      toAccountNumber: fromInput, // Store what the puller typed for the "from" field
+      amount: amount,
+      status: 'successful', 
+      type: 'transferFrom',
+      taskId: result.taskId,
+      date: new Date()
+    }).save();
+
+    res.json({ success: true, taskId: result.taskId });
+
+  } catch (error) {
+    console.error("❌ TransferFrom failed:", error.message);
+    // DO NOT SAVE TO DATABASE if it failed
+    res.status(400).json({
+      success: false, 
+      message: "Transfer failed: Check allowance or balance.", 
+      error: error.message 
+    });
+  }
 });
-
-
 
 // ===============================================
 // GET GLOBAL STATS
