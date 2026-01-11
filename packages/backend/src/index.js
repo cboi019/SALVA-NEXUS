@@ -471,7 +471,7 @@ app.post('/api/transferFrom', async (req, res) => {
             fromAddress: fromUser ? fromUser.safeAddress.toLowerCase() : fromInput.toLowerCase(),
             fromAccountNumber: fromUser ? fromUser.accountNumber : null,
             toAddress: toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase(),
-            toAccountNumber: toUser ? toUser.accountNumber : toInput,, 
+            toAccountNumber: toUser ? toUser.accountNumber : toInput,
             amount,
             status: 'successful', 
             type: 'transferFrom',
