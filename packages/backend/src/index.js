@@ -380,42 +380,32 @@ app.get('/api/transactions/:address', async (req, res) => {
 app.post('/api/transferFrom', async (req, res) => {
     try {
         const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
-        const signingKey = userPrivateKey;
         const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-        console.log(`Executing TransferFrom: Pulling ${amount} from ${fromInput} to ${toInput}`);
-
-        // Call the relay service for transferFrom
-        const { sponsorSafeTransferFrom } = require('./services/relayService');
+        // Call the service - it now correctly handles Alias vs Address internally
         const result = await sponsorSafeTransferFrom(
             safeAddress,
-            signingKey,
+            userPrivateKey,
             fromInput,
             toInput,
             amountWei
         );
 
-        // Resolve addresses for DB logging
-        const fromUser = await User.findOne({ 
-            $or: [{ safeAddress: fromInput }, { accountNumber: fromInput }] 
-        });
-        const toUser = await User.findOne({ 
-            $or: [{ safeAddress: toInput }, { accountNumber: toInput }] 
-        });
+        // Database logic for History (keeping it clean)
+        const fromUser = await User.findOne({ $or: [{ safeAddress: fromInput }, { accountNumber: fromInput }] });
+        const toUser = await User.findOne({ $or: [{ safeAddress: toInput }, { accountNumber: toInput }] });
 
-        // Save to Transaction History
-        const newTransaction = new Transaction({
-            fromAddress: fromUser ? fromUser.safeAddress : fromInput,
-            fromAccountNumber: fromUser ? fromUser.accountNumber : null,
-            toAddress: toUser ? toUser.safeAddress : toInput,
+        await new Transaction({
+            fromAddress: fromUser?.safeAddress || fromInput,
+            fromAccountNumber: fromUser?.accountNumber || fromInput,
+            toAddress: toUser?.safeAddress || toInput,
             toAccountNumber: toInput,
-            amount: amount,
+            amount,
             status: 'successful',
             type: 'transferFrom',
             taskId: result.taskId,
             date: new Date()
-        });
-        await newTransaction.save();
+        }).save();
 
         res.json({ success: true, taskId: result.taskId });
     } catch (error) {

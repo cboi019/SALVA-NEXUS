@@ -69,32 +69,34 @@ async function sponsorSafeApprove(safeAddress, ownerKey, spender, amountWei) {
 }
 
 // 3. FLEXIBLE TRANSFER FROM
+// relayService.js - UPDATED FIX
 async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWei) {
     const { protocolKit, relayKit } = await initKits(safeAddress, ownerKey);
     
     const fromTarget = formatTarget(from);
     const toTarget = formatTarget(to);
 
-    // Check if either is a BigInt (Account Number)
     const isFromAlias = typeof fromTarget === 'bigint';
     const isToAlias = typeof toTarget === 'bigint';
 
-    let functionName = "transferFrom";
-    let abi = ["function transferFrom(address,address,uint256)"];
+    // 1. DYNAMICALLY SELECT ABI AND FUNCTION
+    let abi;
+    let functionName;
 
     if (isFromAlias || isToAlias) {
-        // Update this to match your specific contract function name for aliases
-        functionName = "transferFromViaAlias"; 
-        abi = ["function transferFromViaAlias(uint128,uint128,uint256)"];
+        // IMPORTANT: Ensure this matches your Smart Contract function name exactly
+        functionName = "transferFromViaAccountAlias"; 
+        abi = ["function transferFromViaAccountAlias(uint128,uint128,uint256)"];
+    } else {
+        functionName = "transferFrom";
+        abi = ["function transferFrom(address,address,uint256)"];
     }
 
-    // Logic: If either is an Alias, use the Alias function. 
-    // This assumes your contract has a 'transferFromViaAlias' or similar.
-    // If your contract ONLY supports transferFrom(address, address, uint256), 
-    // the backend index.js will resolve the aliases to addresses before calling this.
-    
-    const iface = new ethers.Interface(["function transferFrom(address,address,uint256)"]);
-    const calldata = iface.encodeFunctionData("transferFrom", [fromTarget, toTarget, amountWei]);
+    const iface = new ethers.Interface(abi);
+
+    // 2. ENCODE WITH CORRECT TYPES
+    // ethers will now accept BigInt for uint128 or string for address
+    const calldata = iface.encodeFunctionData(functionName, [fromTarget, toTarget, amountWei]);
 
     const transactions = [{ to: process.env.NGN_TOKEN_ADDRESS, data: calldata, value: '0' }];
     const safeTransaction = await relayKit.createTransaction({ transactions, options: { isSponsored: true } });
