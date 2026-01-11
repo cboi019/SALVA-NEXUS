@@ -286,7 +286,14 @@ app.get('/api/approvals/:address', async (req, res) => {
         // Map through saved spenders and get their LIVE blockchain allowance
         const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
             try {
-                const liveAllowanceWei = await tokenContract.allowance(ownerAddress, app.spender);
+                // 1. RESOLVE: Check if 'app.spender' is an Account Number or Address
+                let spenderAddress = app.spender;
+                if (!app.spender.startsWith('0x')) {
+                    const spenderUser = await User.findOne({ accountNumber: app.spender });
+                    if (!spenderUser) return app; // Skip if user not found
+                     spenderAddress = spenderUser.safeAddress;
+                }
+                const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
                 const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
                 
                 if (parseFloat(liveAmount) <= 0) {
