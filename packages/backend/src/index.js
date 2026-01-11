@@ -469,7 +469,7 @@ app.post('/api/transferFrom', async (req, res) => {
         // 4. SAVE TO HISTORY: Only happens if the step above didn't fail.
         await new Transaction({
             fromAddress: fromUser ? fromUser.safeAddress.toLowerCase() : fromInput.toLowerCase(),
-            fromAccountNumber: fromUser ? fromUser.accountNumber : null,,
+            fromAccountNumber: fromUser ? fromUser.accountNumber : null,
             toAddress: toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase(),
             toAccountNumber: toUser ? toUser.accountNumber : toInput,, 
             amount,
