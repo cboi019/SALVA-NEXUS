@@ -392,27 +392,38 @@ app.post('/api/approve', async (req, res) => {
 // ===============================================
 app.get('/api/transactions/:address', async (req, res) => {
     try {
-        const { address } = req.params;
-        // Search only for SUCCESSFUL transactions
+        // 1. Normalize the incoming address to lowercase
+        const address = req.params.address.toLowerCase();
+
+        // 2. Search for successful transactions where the user is EITHER sender or receiver
         const transactions = await Transaction.find({
-            status: 'successful', // <--- IMPORTANT: Only show confirmed ones
-            $or: [
-                { fromAddress: address.toLowerCase() },
-                { toAddress: address.toLowerCase() }
+            $and: [
+                { status: 'successful' }, // Ensure we only show confirmed ones
+                { 
+                    $or: [
+                        { fromAddress: address }, 
+                        { toAddress: address }
+                    ] 
+                }
             ]
         }).sort({ date: -1 }).limit(50);
 
+        // 3. Format for the UI
         const formatted = transactions.map(tx => {
-            const isReceived = tx.toAddress?.toLowerCase() === address.toLowerCase();
+            const isReceived = tx.toAddress?.toLowerCase() === address;
             return {
                 ...tx._doc,
                 displayType: isReceived ? 'receive' : 'sent',
-                displayPartner: isReceived ? (tx.fromAccountNumber || tx.fromAddress) : tx.toAccountNumber
+                // Fallback to address if account number isn't in the DB
+                displayPartner: isReceived 
+                    ? (tx.fromAccountNumber || tx.fromAddress) 
+                    : (tx.toAccountNumber || tx.toAddress)
             };
         });
 
         res.json(formatted);
     } catch (error) {
+        console.error("❌ History Fetch Error:", error);
         res.status(500).json([]);
     }
 });
@@ -446,14 +457,16 @@ app.post('/api/transferFrom', async (req, res) => {
 
         // 3. RESOLVE USERS: Get real data for the history log.
         const fromUser = await User.findOne({ $or: [{ safeAddress: fromInput }, { accountNumber: fromInput }] });
-        const toUser = await User.findOne({ $or: [{ safeAddress: toInput }, { accountNumber: toInput }] });
+        const toUser = await User.findOne({
+          $or: [{ safeAddress: toInput }, { accountNumber: toInput }]
+        });
 
         // 4. SAVE TO HISTORY: Only happens if the step above didn't fail.
         await new Transaction({
-            fromAddress: fromUser?.safeAddress || fromInput,
-            fromAccountNumber: fromUser?.accountNumber || fromInput,
-            toAddress: toUser?.safeAddress || toInput,
-            toAccountNumber: toUser?.accountNumber || toInput, 
+            fromAddress: safeAddress.toLowerCase(),
+            fromAccountNumber: sender ? sender.accountNumber : null,
+            toAddress: resolvedTo ? resolvedTo.toLowerCase() : null,
+            toAccountNumber: toInput, 
             amount,
             status: 'successful', 
             type: 'transferFrom',
