@@ -241,12 +241,12 @@ const Dashboard = () => {
           });
           if (response.ok) {
               showMsg("TransferFrom successful!");
-              // Wait 3 seconds for the block to mine before refreshing
+              // Wait 7 seconds for the block to mine before refreshing
               setTimeout(() => {
                   fetchBalance(user.safeAddress);
                   fetchTransactions(user.safeAddress);
                   fetchApprovals(user.safeAddress, true);
-              }, 3500); 
+              }, 7000); 
           } else {
             showMsg("TransferFrom failed", "error");
           }

@@ -289,6 +289,12 @@ app.get('/api/approvals/:address', async (req, res) => {
                 const liveAllowanceWei = await tokenContract.allowance(ownerAddress, app.spender);
                 const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
                 
+                if (parseFloat(liveAmount) <= 0) {
+                    // THE TRUTH: If it's 0, wipe it from the DB entirely
+                    await Approval.deleteOne({ _id: app._id });
+                    return null; 
+                }
+
                 // Sync the database if the spender has used some funds
                 if (liveAmount !== app.amount) {
                     app.amount = liveAmount;
@@ -302,7 +308,7 @@ app.get('/api/approvals/:address', async (req, res) => {
         }));
 
         // Only return spenders who still have a balance > 0
-        res.json(liveApprovals.filter(app => parseFloat(app.amount) > 0));
+        res.json(liveApprovals.filter(app => app !== null));
     } catch (error) {
         console.error("Critical Approval Route Error:", error);
         res.status(500).json({ error: error.message });
