@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion, animate } from 'framer-motion';
-import { Twitter, Instagram, Github } from 'lucide-react'; // Ensure lucide-react is installed
+import { Instagram, Github } from 'lucide-react';
 import Stars from '../components/Stars';
+
+// Custom X (formerly Twitter) Logo Component
+const XLogo = ({ size = 20 }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="currentColor" 
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932zm-1.294 19.497h2.039L6.486 3.24H4.298l13.309 17.41z" />
+  </svg>
+);
 
 // --- CountUp Component with Glow Pulse ---
 const CountUp = ({ to, decimals = 0 }) => {
@@ -133,7 +146,7 @@ const Home = () => {
         />
       </section>
 
-      {/* --- NEW SOCIAL FOOTER AREA --- */}
+      {/* --- UPDATED SOCIAL FOOTER --- */}
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 py-20 border-t border-gray-100 dark:border-white/5">
         <div className="flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-center md:text-left">
@@ -143,12 +156,12 @@ const Home = () => {
 
           <div className="flex items-center gap-6">
             <SocialIcon 
-              href="https://x.com/salvaFinance?s=20" 
-              icon={<Twitter size={20} />} 
+              href="https://x.com/salvaFinance" 
+              icon={<XLogo size={18} />} 
               label="X (Twitter)" 
             />
             <SocialIcon 
-              href="https://x.com/salvaFinance?s=20" 
+              href="https://instagram.com/salvaFinance" 
               icon={<Instagram size={20} />} 
               label="Instagram" 
             />
