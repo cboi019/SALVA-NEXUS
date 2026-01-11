@@ -243,45 +243,37 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// ===============================================
-// GET BALANCE
-// ===============================================
-app.get('/api/balance/:address', async (req, res) => {
-  try {
-    const { address } = req.params;
-    const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
-    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
-    const balanceWei = await tokenContract.balanceOf(address);
-    const balance = ethers.formatUnits(balanceWei, 6);
-    res.json({ balance });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch balance", balance: "0" });
-  }
-});
-
-// backend/index.js
 app.get('/api/approvals/:address', async (req, res) => {
     try {
         const ownerAddress = req.params.address;
         const savedApprovals = await Approval.find({ owner: ownerAddress.toLowerCase() });
         
+        // Define the contract inside the route so it's always available
+        const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
+        const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+        
         // Map through saved spenders and get their LIVE blockchain allowance
         const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
-            const liveAllowanceWei = await tokenContract.allowance(ownerAddress, app.spender);
-            const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
-            
-            // Sync the database if the spender has used some funds
-            if (liveAmount !== app.amount) {
-                app.amount = liveAmount;
-                await app.save();
+            try {
+                const liveAllowanceWei = await tokenContract.allowance(ownerAddress, app.spender);
+                const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
+                
+                // Sync the database if the spender has used some funds
+                if (liveAmount !== app.amount) {
+                    app.amount = liveAmount;
+                    await app.save();
+                }
+                return app;
+            } catch (err) {
+                console.error(`Allowance check failed for ${app.spender}:`, err.message);
+                return app; // Fallback to DB version if RPC fails
             }
-            
-            return app;
         }));
 
         // Only return spenders who still have a balance > 0
         res.json(liveApprovals.filter(app => parseFloat(app.amount) > 0));
     } catch (error) {
+        console.error("Critical Approval Route Error:", error);
         res.status(500).json({ error: error.message });
     }
 });
