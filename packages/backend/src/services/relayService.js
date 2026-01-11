@@ -112,3 +112,9 @@ async function sponsorSafeTransferFrom(ownerKey, safeAddress, from, to, amountWe
         options: { isSponsored: true } 
     });
 }
+
+module.exports = { 
+    sponsorSafeTransfer, 
+    sponsorSafeApprove, 
+    sponsorSafeTransferFrom 
+};
