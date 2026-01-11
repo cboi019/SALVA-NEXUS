@@ -243,6 +243,37 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// ===============================================
+// GET BALANCE
+// ===============================================
+app.get('/api/balance/:address', async (req, res) => {
+  try {
+    const { address } = req.params;
+    
+    // 1. ABI for checking balance
+    const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
+    const tokenContract = new ethers.Contract(
+      process.env.NGN_TOKEN_ADDRESS, 
+      TOKEN_ABI, 
+      provider
+    );
+
+    // 2. Fetch balance using your helper to prevent RPC blips
+    const balanceWei = await retryRPCCall(async () => 
+      await tokenContract.balanceOf(address)
+    );
+
+    // 3. Format units (Using 6 decimals as per your other routes)
+    const balance = ethers.formatUnits(balanceWei, 6);
+    
+    res.json({ balance });
+  } catch (error) {
+    console.error("❌ Balance Fetch Failed:", error.message);
+    // Return 0 so the UI doesn't crash, but log the error
+    res.status(200).json({ balance: "0.00" });
+  }
+});
+
 app.get('/api/approvals/:address', async (req, res) => {
     try {
         const ownerAddress = req.params.address;

@@ -189,7 +189,7 @@ const Dashboard = () => {
         setTimeout(() => {
           fetchBalance(user.safeAddress);
           fetchTransactions(user.safeAddress);
-        }, 3000);
+        }, 3500);
       } else {
         showMsg(data.message || "Transfer failed", "error");
       }
@@ -217,7 +217,7 @@ const Dashboard = () => {
         if (response.ok) {
             showMsg("Approval updated on-chain!");
             setApproveData({ spender: '', amount: '' });
-            setTimeout(() => fetchApprovals(user.safeAddress), 3000);
+            setTimeout(() => fetchApprovals(user.safeAddress), 4000);
         }
         else showMsg("Approval failed", "error");
     } catch (err) { showMsg("Connection error", "error"); }
@@ -225,28 +225,33 @@ const Dashboard = () => {
   };
 
   const handleTransferFrom = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userPrivateKey: user.ownerKey,
-                safeAddress: user.safeAddress,
-                fromInput: transferFromData.from,
-                toInput: transferFromData.to,
-                amount: transferFromData.amount
-            })
-        });
-        if (response.ok) {
-            showMsg("TransferFrom successful!");
-            fetchBalance(user.safeAddress);
-            // After a pull, refresh the list to show remaining allowance
-            setTimeout(() => fetchApprovals(user.safeAddress, true), 2000);
-        } else showMsg("TransferFrom failed", "error");
-    } catch (err) { showMsg("Connection error", "error"); }
-    setLoading(false);
+      e.preventDefault();
+      setLoading(true);
+      try {
+          const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  userPrivateKey: user.ownerKey,
+                  safeAddress: user.safeAddress,
+                  fromInput: transferFromData.from,
+                  toInput: transferFromData.to,
+                  amount: transferFromData.amount
+              })
+          });
+          if (response.ok) {
+              showMsg("TransferFrom successful!");
+              // Wait 3 seconds for the block to mine before refreshing
+              setTimeout(() => {
+                  fetchBalance(user.safeAddress);
+                  fetchTransactions(user.safeAddress);
+                  fetchApprovals(user.safeAddress, true);
+              }, 3500); 
+          } else {
+            showMsg("TransferFrom failed", "error");
+          }
+      } catch (err) { showMsg("Connection error", "error"); }
+      setLoading(false);
   };
 
   if (!user) return null;
