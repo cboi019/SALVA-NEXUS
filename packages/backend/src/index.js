@@ -333,12 +333,6 @@ app.post('/api/transfer', async (req, res) => {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Resolve sender
-    const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-    if (!sender) {
-      return res.status(404).json({ message: "Sender not found" });
-    }
-
     // Resolve recipient to get their address (needed for blockchain)
     const recipient = await resolveUser(toInput);
     const recipientAddress = recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
@@ -360,9 +354,11 @@ app.post('/api/transfer', async (req, res) => {
       console.error("❌ Transfer failed: No taskId returned");
       
       // Save as FAILED for sender only
+      const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
+      
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: sender.accountNumber,
+        fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
         toAccountNumber: toInput, // Save exactly what was typed
         amount: amount,
@@ -382,9 +378,12 @@ app.post('/api/transfer', async (req, res) => {
 
     // Save SUCCESSFUL transaction
     // KEY: toAccountNumber stores EXACTLY what the sender typed (account number OR address)
+    // Get sender info for the transaction record
+    const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
+    
     await new Transaction({
       fromAddress: safeAddress.toLowerCase(),
-      fromAccountNumber: sender.accountNumber,
+      fromAccountNumber: sender ? sender.accountNumber : null,
       toAddress: recipientAddress,
       toAccountNumber: toInput, // This is what was typed - could be account number or address
       amount: amount,
