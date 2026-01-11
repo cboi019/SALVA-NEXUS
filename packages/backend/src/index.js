@@ -335,19 +335,24 @@ app.post('/api/transfer', async (req, res) => {
 
         // Resolve recipient address for the database
         let resolvedTo = toInput;
+        let resolvedToAccount = isAccountNumber ? toInput : null; // Track this
+
         if (isAccountNumber) {
             const recipientUser = await User.findOne({ accountNumber: toInput });
             resolvedTo = recipientUser ? recipientUser.safeAddress : null;
+        } else {
+            // If they sent to a raw address, try to find the account number for the UI
+            const recipientUser = await User.findOne({ safeAddress: toInput.toLowerCase() });
+            if (recipientUser) resolvedToAccount = recipientUser.accountNumber;
         }
 
-        const sender = await User.findOne({ safeAddress });
-
+        const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
         const result = await sponsorSafeTransfer(safeAddress, signingKey, toInput, amountWei, isAccountNumber);
 
         const newTransaction = new Transaction({
-            fromAddress: safeAddress,
+            fromAddress: safeAddress.toLowerCase(),
             fromAccountNumber: sender ? sender.accountNumber : null,
-            toAddress: resolvedTo,
+            toAddress: resolvedTo ? resolvedTo.toLowerCase() : null,
             toAccountNumber: toInput,
             amount: amount,
             status: 'successful',
@@ -463,10 +468,10 @@ app.post('/api/transferFrom', async (req, res) => {
 
         // 4. SAVE TO HISTORY: Only happens if the step above didn't fail.
         await new Transaction({
-            fromAddress: safeAddress.toLowerCase(),
-            fromAccountNumber: sender ? sender.accountNumber : null,
-            toAddress: resolvedTo ? resolvedTo.toLowerCase() : null,
-            toAccountNumber: toInput, 
+            fromAddress: fromUser ? fromUser.safeAddress.toLowerCase() : fromInput.toLowerCase(),
+            fromAccountNumber: fromUser ? fromUser.accountNumber : null,,
+            toAddress: toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase(),
+            toAccountNumber: toUser ? toUser.accountNumber : toInput,, 
             amount,
             status: 'successful', 
             type: 'transferFrom',
