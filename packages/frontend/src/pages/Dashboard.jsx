@@ -224,38 +224,42 @@ const Dashboard = () => {
     setLoading(false);
   };
 
-  const handleTransferFrom = async (e) => {
-      e.preventDefault();
-      setLoading(true);
-      try {
-          const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  userPrivateKey: user.ownerKey,
-                  safeAddress: user.safeAddress,
-                  fromInput: transferFromData.from,
-                  toInput: transferFromData.to,
-                  amount: transferFromData.amount
-              })
-          });
+const handleTransferFrom = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userPrivateKey: user.ownerKey,
+                safeAddress: user.safeAddress,
+                fromInput: transferFromData.from,
+                toInput: transferFromData.to,
+                amount: transferFromData.amount
+            })
+        });
 
-          const result = await response.json();
+        const result = await response.json();
 
-          if (response.ok) {
-              showMsg("Pull request sent to relay!");
-              // Wait 7 seconds for the block to mine before refreshing
-              setTimeout(() => {
-                  fetchBalance(user.safeAddress);
-                  fetchTransactions(user.safeAddress);
-                  fetchApprovals(user.safeAddress, true);
-              }, 7000); 
-          } else {
-            showMsg(result.message || "TransferFrom REVERTED: No Permission", "error");
-          }
-      } catch (err) { showMsg("Connection error", "error"); }
-      setLoading(false);
-  };
+        if (response.ok) {
+            showMsg("Pull request sent to relay!");
+            // ONLY REFRESH IF THE BLOCKCHAIN ACTUALLY ACCEPTED IT
+            setTimeout(() => {
+                fetchBalance(user.safeAddress);
+                fetchTransactions(user.safeAddress);
+                fetchApprovals(user.safeAddress, true);
+            }, 7000); 
+        } else {
+            // STOP EVERYTHING: Do not refresh, do not update UI
+            showMsg(result.message || "TransferFrom REVERTED", "error");
+        }
+    } catch (err) { 
+        showMsg("Network Error: Pull failed", "error"); 
+    } finally {
+        setLoading(false);
+    }
+};
 
   if (!user) return null;
 

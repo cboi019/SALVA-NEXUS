@@ -390,19 +390,18 @@ app.post('/api/approve', async (req, res) => {
 // ===============================================
 // GET TRANSACTIONS
 // ===============================================
-// UPDATED: GET TRANSACTIONS (Now finds Sent AND Received)
 app.get('/api/transactions/:address', async (req, res) => {
     try {
         const { address } = req.params;
-        // Search for txs where user is sender OR receiver
+        // Search only for SUCCESSFUL transactions
         const transactions = await Transaction.find({
+            status: 'successful', // <--- IMPORTANT: Only show confirmed ones
             $or: [
-                { fromAddress: address },
-                { toAddress: address }
+                { fromAddress: address.toLowerCase() },
+                { toAddress: address.toLowerCase() }
             ]
         }).sort({ date: -1 }).limit(50);
 
-        // Map to identify if it was 'sent' or 'received' for the UI
         const formatted = transactions.map(tx => {
             const isReceived = tx.toAddress?.toLowerCase() === address.toLowerCase();
             return {
