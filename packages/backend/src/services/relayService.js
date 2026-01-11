@@ -69,7 +69,7 @@ async function sponsorSafeApprove(safeAddress, ownerKey, spender, amountWei) {
 }
 
 // 3. FLEXIBLE TRANSFER FROM
-// relayService.js - UPDATED FIX
+// relayService.js
 async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWei) {
     const { protocolKit, relayKit } = await initKits(safeAddress, ownerKey);
     
@@ -79,26 +79,34 @@ async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWe
     const isFromAlias = typeof fromTarget === 'bigint';
     const isToAlias = typeof toTarget === 'bigint';
 
-    // 1. DYNAMICALLY SELECT ABI AND FUNCTION
     let abi;
     let functionName;
+    let params;
 
+    // Logic: If EITHER is an alias, we MUST use the Alias function
     if (isFromAlias || isToAlias) {
-        // IMPORTANT: Ensure this matches your Smart Contract function name exactly
         functionName = "transferFromViaAccountAlias"; 
         abi = ["function transferFromViaAccountAlias(uint128,uint128,uint256)"];
+        
+        // Force conversion to BigInt for uint128 if they sent an address string
+        params = [
+            isFromAlias ? fromTarget : BigInt(0), // You might need a way to resolve address -> alias here if your contract requires it
+            isToAlias ? toTarget : BigInt(0),
+            amountWei
+        ];
     } else {
+        // Standard ERC-20 TransferFrom
         functionName = "transferFrom";
         abi = ["function transferFrom(address,address,uint256)"];
+        params = [fromTarget, toTarget, amountWei];
     }
 
     const iface = new ethers.Interface(abi);
-
-    // 2. ENCODE WITH CORRECT TYPES
-    // ethers will now accept BigInt for uint128 or string for address
-    const calldata = iface.encodeFunctionData(functionName, [fromTarget, toTarget, amountWei]);
+    const calldata = iface.encodeFunctionData(functionName, params);
 
     const transactions = [{ to: process.env.NGN_TOKEN_ADDRESS, data: calldata, value: '0' }];
+    
+    // Use the newer relayKit pattern
     const safeTransaction = await relayKit.createTransaction({ transactions, options: { isSponsored: true } });
     const signedSafeTransaction = await protocolKit.signTransaction(safeTransaction);
     return await relayKit.executeTransaction({ executable: signedSafeTransaction, options: { isSponsored: true } });

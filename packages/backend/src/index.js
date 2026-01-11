@@ -155,57 +155,6 @@ async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
   }
 }
 
-// Add this helper function to index.js
-async function sponsorSafeTransferFrom(safeAddress, userPrivateKey, fromInput, toInput, amountWei) {
-    const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
-    const GELATO_API_KEY = process.env.GELATO_API_KEY;
-    const TOKEN_CONTRACT = process.env.NGN_TOKEN_ADDRESS;
-
-    // 1. Initialize Protocol Kit
-    const protocolKit = await Safe.default.init({
-        provider: RPC_URL,
-        signer: userPrivateKey,
-        safeAddress: safeAddress
-    });
-
-    // 2. Encode the Transaction
-    const tokenInterface = new ethers.Interface([
-        "function transferFrom(address from, address to, uint256 amount)"
-    ]);
-
-    // Note: Use the inputs directly; the service logic handles the address resolution
-    const data = tokenInterface.encodeFunctionData("transferFrom", [
-        fromInput,
-        toInput,
-        amountWei
-    ]);
-
-    const transactions = [{
-        to: TOKEN_CONTRACT,
-        value: "0",
-        data: data
-    }];
-
-    // 3. Setup Relay Kit
-    const relayKit = new GelatoRelayPack({ apiKey: GELATO_API_KEY });
-    
-    // 4. Create and Sign the Relayed Transaction
-    const safeTransaction = await relayKit.createRelayedTransaction({
-        safe: protocolKit,
-        transactions,
-        options: { isSponsored: true }
-    });
-
-    const signedSafeTx = await protocolKit.signTransaction(safeTransaction);
-
-    // 5. Execute via Gelato
-    const response = await relayKit.executeRelayTransaction(signedSafeTx, protocolKit, {
-        isSponsored: true
-    });
-
-    return response;
-}
-
 // ===============================================
 // REGISTRATION - Relayed via Gelato Gas Tank
 // ===============================================
