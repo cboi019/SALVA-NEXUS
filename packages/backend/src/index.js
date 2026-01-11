@@ -438,7 +438,11 @@ app.post('/api/transferFrom', async (req, res) => {
 
         // 2. VALIDATE: If the relay failed or the contract reverted, stop here.
         if (!result || !result.taskId) {
-            return res.status(400).json({ message: "Relay failed: Transaction rejected by network." });
+            console.error("❌ Relay declined the transaction. Likely a revert.");
+            return res.status(400).json({
+              success: false, 
+              message: "Transfer REVERTED: Check allowance or balance."
+            });
         }
 
         // 3. RESOLVE USERS: Get real data for the history log.
@@ -460,9 +464,10 @@ app.post('/api/transferFrom', async (req, res) => {
 
         res.json({ success: true, taskId: result.taskId });
     } catch (error) {
-        console.error("❌ TransferFrom failed:", error);
+        console.error("❌ TransferFrom failed:", error.message);
         // This ensures the frontend shows an ERROR notification instead of "Success".
-        res.status(400).json({ 
+        res.status(400).json({
+            success: false, 
             message: "Transfer failed: Check allowance or balance.", 
             error: error.message 
         });
