@@ -259,19 +259,30 @@ app.get('/api/balance/:address', async (req, res) => {
   }
 });
 
+// backend/index.js
 app.get('/api/approvals/:address', async (req, res) => {
     try {
-        const { address } = req.params;
+        const ownerAddress = req.params.address;
+        const savedApprovals = await Approval.find({ owner: ownerAddress.toLowerCase() });
         
-        // Find all confirmed approvals for this user in our DB
-        const list = await Approval.find({ 
-            owner: address.toLowerCase(),
-            amount: { $ne: "0" } // Don't show revoked (0) permissions
-        });
+        // Map through saved spenders and get their LIVE blockchain allowance
+        const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
+            const liveAllowanceWei = await tokenContract.allowance(ownerAddress, app.spender);
+            const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
+            
+            // Sync the database if the spender has used some funds
+            if (liveAmount !== app.amount) {
+                app.amount = liveAmount;
+                await app.save();
+            }
+            
+            return app;
+        }));
 
-        res.json(list);
+        // Only return spenders who still have a balance > 0
+        res.json(liveApprovals.filter(app => parseFloat(app.amount) > 0));
     } catch (error) {
-        res.status(500).json([]);
+        res.status(500).json({ error: error.message });
     }
 });
 
