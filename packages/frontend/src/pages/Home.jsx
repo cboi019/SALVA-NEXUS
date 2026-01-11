@@ -136,7 +136,7 @@ const Home = () => {
       <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-32 space-y-16 sm:space-y-32">
         <FeatureRow 
           title="Naira-Referenced Stability"
-          desc="Unlike volatile assets, Salva NGNs are pegged 1:1, allowing you to store value and trade with the confidence of the local currency, enhanced by the speed of blockchain."
+          desc="Unlike volatile assets, Salva NGNs are naira-denominated digital balances, allowing you to store value and trade with the confidence of the local currency, enhanced by the speed of blockchain."
           align="left"
         />
         <FeatureRow 
