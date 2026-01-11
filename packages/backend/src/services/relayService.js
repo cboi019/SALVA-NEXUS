@@ -69,8 +69,7 @@ async function sponsorSafeApprove(safeAddress, ownerKey, spender, amountWei) {
 }
 
 // 3. FLEXIBLE TRANSFER FROM
-// relayService.js
-async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWei) {
+async function sponsorSafeTransferFrom(ownerKey, safeAddress, from, to, amountWei) {
     const { protocolKit, relayKit } = await initKits(safeAddress, ownerKey);
     
     const fromTarget = formatTarget(from);
@@ -79,26 +78,24 @@ async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWe
     const isFromAlias = typeof fromTarget === 'bigint';
     const isToAlias = typeof toTarget === 'bigint';
 
-    let abi;
-    let functionName;
-    let params;
+    let abi, functionName, params;
 
-    // Logic: If EITHER is an alias, we MUST use the Alias function
+    // Correct Logic: Only use the Alias function if at least ONE input is an Alias
     if (isFromAlias || isToAlias) {
         functionName = "transferFromViaAccountAlias"; 
         abi = ["function transferFromViaAccountAlias(uint128,uint128,uint256)"];
         
-        // Force conversion to BigInt for uint128 if they sent an address string
+        // Convert to BigInt for uint128 ONLY if it's an alias string, 
+        // else the contract expects the uint128 representation of the address or the alias.
         params = [
-            isFromAlias ? fromTarget : BigInt(0), // You might need a way to resolve address -> alias here if your contract requires it
-            isToAlias ? toTarget : BigInt(0),
+            isFromAlias ? fromTarget : from, // Contract needs to handle address-to-uint128 conversion or this will revert
+            isToAlias ? toTarget : to,
             amountWei
         ];
     } else {
-        // Standard ERC-20 TransferFrom
         functionName = "transferFrom";
         abi = ["function transferFrom(address,address,uint256)"];
-        params = [fromTarget, toTarget, amountWei];
+        params = [from, to, amountWei];
     }
 
     const iface = new ethers.Interface(abi);
@@ -106,14 +103,12 @@ async function sponsorSafeTransferFrom(safeAddress, ownerKey, from, to, amountWe
 
     const transactions = [{ to: process.env.NGN_TOKEN_ADDRESS, data: calldata, value: '0' }];
     
-    // Use the newer relayKit pattern
     const safeTransaction = await relayKit.createTransaction({ transactions, options: { isSponsored: true } });
     const signedSafeTransaction = await protocolKit.signTransaction(safeTransaction);
-    return await relayKit.executeTransaction({ executable: signedSafeTransaction, options: { isSponsored: true } });
+    
+    // Final execute call
+    return await relayKit.executeTransaction({ 
+        executable: signedSafeTransaction, 
+        options: { isSponsored: true } 
+    });
 }
-
-module.exports = { 
-    sponsorSafeTransfer, 
-    sponsorSafeApprove, 
-    sponsorSafeTransferFrom 
-};

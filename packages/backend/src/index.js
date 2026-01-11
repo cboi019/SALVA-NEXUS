@@ -426,26 +426,33 @@ app.post('/api/transferFrom', async (req, res) => {
         const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
         const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-        // Call the service - it now correctly handles Alias vs Address internally
+        // 1. EXECUTE: Call the service ONLY once. 
+        // Ensure all Gelato logic (sign, create, execute) is inside this function.
         const result = await sponsorSafeTransferFrom(
-            safeAddress,
             userPrivateKey,
+            safeAddress,
             fromInput,
             toInput,
             amountWei
         );
 
-        // Database logic for History (keeping it clean)
+        // 2. VALIDATE: If the relay failed or the contract reverted, stop here.
+        if (!result || !result.taskId) {
+            return res.status(400).json({ message: "Relay failed: Transaction rejected by network." });
+        }
+
+        // 3. RESOLVE USERS: Get real data for the history log.
         const fromUser = await User.findOne({ $or: [{ safeAddress: fromInput }, { accountNumber: fromInput }] });
         const toUser = await User.findOne({ $or: [{ safeAddress: toInput }, { accountNumber: toInput }] });
 
+        // 4. SAVE TO HISTORY: Only happens if the step above didn't fail.
         await new Transaction({
             fromAddress: fromUser?.safeAddress || fromInput,
             fromAccountNumber: fromUser?.accountNumber || fromInput,
             toAddress: toUser?.safeAddress || toInput,
-            toAccountNumber: toInput,
+            toAccountNumber: toUser?.accountNumber || toInput, 
             amount,
-            status: 'successful',
+            status: 'successful', 
             type: 'transferFrom',
             taskId: result.taskId,
             date: new Date()
@@ -454,7 +461,11 @@ app.post('/api/transferFrom', async (req, res) => {
         res.json({ success: true, taskId: result.taskId });
     } catch (error) {
         console.error("❌ TransferFrom failed:", error);
-        res.status(500).json({ message: "TransferFrom failed", error: error.message });
+        // This ensures the frontend shows an ERROR notification instead of "Success".
+        res.status(400).json({ 
+            message: "Transfer failed: Check allowance or balance.", 
+            error: error.message 
+        });
     }
 });
 

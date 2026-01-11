@@ -239,8 +239,11 @@ const Dashboard = () => {
                   amount: transferFromData.amount
               })
           });
+
+          const result = await response.json();
+
           if (response.ok) {
-              showMsg("TransferFrom successful!");
+              showMsg("Pull request sent to relay!");
               // Wait 7 seconds for the block to mine before refreshing
               setTimeout(() => {
                   fetchBalance(user.safeAddress);
@@ -248,7 +251,7 @@ const Dashboard = () => {
                   fetchApprovals(user.safeAddress, true);
               }, 7000); 
           } else {
-            showMsg("TransferFrom failed", "error");
+            showMsg(result.message || "TransferFrom REVERTED: No Permission", "error");
           }
       } catch (err) { showMsg("Connection error", "error"); }
       setLoading(false);
