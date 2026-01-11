@@ -7,14 +7,12 @@ const nodemailer = require('nodemailer');
 const { ethers } = require('ethers');
 const { wallet, provider } = require('./services/walletSigner');
 const { generateAndDeploySalvaIdentity } = require('./services/userService');
-const { sponsorSafeTransfer } = require('./services/relayService');
+const { sponsorSafeTransfer, sponsorSafeTransferFrom } = require('./services/relayService');
 const User = require('./models/User');
 const Transaction = require('./models/Transaction');
 const mongoose = require('mongoose');
 const { Resend } = require('resend'); // UPDATED
 const { GelatoRelay } = require("@gelatonetwork/relay-sdk"); // UPDATED
-const Safe = require('@safe-global/protocol-kit'); // Add this
-const { GelatoRelayPack } = require('@safe-global/relay-kit'); // Add this
 const Approval = require('./models/Approval'); // Import the model at the top
 
 // Initialize Resend and Gelato
