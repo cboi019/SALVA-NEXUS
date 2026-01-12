@@ -533,6 +533,12 @@ app.post('/api/approve', async (req, res) => {
   }
 });
 
+// Temporarily add this test route to your backend:
+app.get('/api/debug/approvals', async (req, res) => {
+  const all = await Approval.find({});
+  res.json(all);
+});
+
 // ===============================================
 // GET TRANSACTIONS
 // ===============================================
@@ -649,24 +655,33 @@ app.post('/api/transferFrom', async (req, res) => {
 });
 
 
-// FIXED: Get incoming allowances - checks BOTH address and account number
+// Replace your /api/allowances-for/:address route with this:
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
     const userAddress = req.params.address.toLowerCase();
     
-    // Find the user to get their account number
     const currentUser = await User.findOne({ safeAddress: userAddress });
     if (!currentUser) {
+      console.log("❌ User not found for address:", userAddress);
       return res.json([]);
     }
 
-    // Find approvals where the spender is EITHER the user's address OR account number
+    console.log("🔍 Searching allowances for:", {
+      address: userAddress,
+      accountNumber: currentUser.accountNumber
+    });
+
+    // Search with BOTH lowercase address and account number
     const savedAllowances = await Approval.find({
       $or: [
         { spender: userAddress },
-        { spender: currentUser.accountNumber }
+        { spender: userAddress.toUpperCase() },
+        { spender: currentUser.accountNumber },
+        { spender: currentUser.accountNumber.toLowerCase() }
       ]
     });
+
+    console.log("📋 Found allowances:", savedAllowances.length);
     
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
@@ -675,31 +690,27 @@ app.get('/api/allowances-for/:address', async (req, res) => {
       try {
         let ownerAddress = app.owner;
         
-        // If owner is account number, resolve to address
         if (!app.owner.startsWith('0x')) {
           const ownerUser = await User.findOne({ accountNumber: app.owner });
           if (!ownerUser) return null;
           ownerAddress = ownerUser.safeAddress;
         }
         
-        // CHECK LIVE ON-CHAIN ALLOWANCE
         const liveAllowanceWei = await tokenContract.allowance(ownerAddress, userAddress);
         const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
-        // DELETE FROM DB IF ALLOWANCE IS ZERO
         if (parseFloat(liveAmount) <= 0) {
           await Approval.deleteOne({ _id: app._id });
           return null;
         }
 
-        // UPDATE DB IF AMOUNT CHANGED
         if (liveAmount !== app.amount) {
           app.amount = liveAmount;
           await app.save();
         }
         
         return {
-          allower: app.owner, // Return what was originally stored (account number or address)
+          allower: app.owner,
           amount: app.amount,
           date: app.date
         };
@@ -713,7 +724,9 @@ app.get('/api/allowances-for/:address', async (req, res) => {
       }
     }));
 
-    res.json(liveAllowances.filter(app => app !== null));
+    const filtered = liveAllowances.filter(app => app !== null);
+    console.log("✅ Returning allowances:", filtered.length);
+    res.json(filtered);
   } catch (error) {
     console.error("Critical Incoming Allowance Route Error:", error);
     res.status(500).json({ error: error.message });
