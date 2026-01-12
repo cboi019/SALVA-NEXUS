@@ -511,7 +511,7 @@ const handleTransferFrom = async (e) => {
                       <div key={i} className="p-3 bg-black/20 rounded-xl border border-white/5 ...">
                           <div className="flex justify-between items-center">
                             <div className="min-w-0 pr-2">
-                               {/* We use app.allower because that is the 'owner' in your Schema */}
+                               {/* We use app.allower because that is the 'owner'- in your Schema */}
                                <p className="font-mono text-[10px] text-salvaGold truncate">{app.allower}</p>
                                <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Me</p>
                            </div>
