@@ -110,12 +110,15 @@ const Dashboard = () => {
 
   // NEW: Fetch allowances where I am the spender
   const fetchIncomingAllowances = async (address, silent = false) => {
+    if(!silent) setIsRefreshingApprovals(true); // Add this line to trigger "SYNCING"
     try {
       const res = await fetch(`${API_BASE_URL}/api/allowances-for/${address}`);
       const data = await res.json();
       setIncomingAllowances(data);
     } catch (err) {
       console.error("Failed to load incoming allowances");
+    } finally {
+      setIsRefreshingApprovals(false); // Add this line to stop "SYNCING"
     }
   };
 
@@ -491,8 +494,8 @@ const handleTransferFrom = async (e) => {
             {/* NEW: INCOMING ALLOWANCES BOX */}
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances For Me</h4>
-                <button onClick={() => fetchIncomingAllowances(user.safeAddress)} className="text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all">REFRESH ↻</button>
+                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances</h4>
+                <button onClick={() => fetchIncomingAllowances(user.safeAddress)} className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}> {isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}</button>
               </div>
               <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
                 {incomingAllowances.length > 0 ? (
@@ -612,3 +615,5 @@ const handleTransferFrom = async (e) => {
 };
 
 export default Dashboard;
+
+
