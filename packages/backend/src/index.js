@@ -521,6 +521,12 @@ app.post('/api/approve', async (req, res) => {
       { upsert: true }
     );
 
+    console.log("✅ APPROVAL SAVED:", {
+      owner: safeAddress.toLowerCase(),
+      spender: spenderInput.toLowerCase(),
+      amount: amount
+    });
+
     res.json({ success: true, taskId: result.taskId });
   } catch (error) {
     res.status(500).json({ message: "Approval failed", error: error.message });
