@@ -62,6 +62,67 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.error('❌ MongoDB Connection Failed:', err));
 
 // ===============================================
+// HELPER: Check Gelato Task Status (REVERT DETECTION)
+// ===============================================
+async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
+  console.log(`🔍 Polling Gelato task status for: ${taskId}`);
+  
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const status = await relay.getTaskStatus(taskId);
+      console.log(`📊 Task ${taskId} status:`, status.taskState);
+
+      // SUCCESS STATES
+      if (status.taskState === 'ExecSuccess') {
+        console.log(`✅ Task ${taskId} SUCCEEDED on-chain`);
+        return { success: true, status: 'successful' };
+      }
+
+      // FAILURE STATES
+      if (status.taskState === 'ExecReverted') {
+        console.error(`❌ Task ${taskId} REVERTED on-chain`);
+        return { success: false, status: 'failed', reason: 'Transaction reverted on blockchain' };
+      }
+
+      if (status.taskState === 'Cancelled') {
+        console.error(`❌ Task ${taskId} was CANCELLED`);
+        return { success: false, status: 'failed', reason: 'Transaction cancelled' };
+      }
+
+      if (status.taskState === 'Blacklisted') {
+        console.error(`❌ Task ${taskId} was BLACKLISTED`);
+        return { success: false, status: 'failed', reason: 'Transaction blacklisted' };
+      }
+
+      // PENDING STATES - keep polling
+      if (['CheckPending', 'ExecPending', 'WaitingForConfirmation'].includes(status.taskState)) {
+        console.log(`⏳ Task ${taskId} still pending... (attempt ${i + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+
+      // UNKNOWN STATE
+      console.warn(`⚠️ Unknown task state: ${status.taskState}`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+
+    } catch (error) {
+      console.error(`❌ Error checking task status (attempt ${i + 1}):`, error.message);
+      
+      // If we can't check status after max retries, assume failure
+      if (i === maxRetries - 1) {
+        return { success: false, status: 'failed', reason: 'Could not verify transaction status' };
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  // TIMEOUT
+  console.error(`⏰ Task ${taskId} timed out after ${maxRetries} attempts`);
+  return { success: false, status: 'failed', reason: 'Transaction verification timeout' };
+}
+
+// ===============================================
 // AUTH & EMAIL ROUTES
 // ===============================================
 
@@ -326,14 +387,13 @@ app.get('/api/approvals/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER (Fixed - saves what was typed for display)
+// TRANSFER (Fixed with Revert Detection)
 // ===============================================
 app.post('/api/transfer', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Resolve recipient to get their address (needed for blockchain)
     const recipient = await resolveUser(toInput);
     const recipientAddress = recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
 
@@ -349,18 +409,16 @@ app.post('/api/transfer', async (req, res) => {
       amountWei
     );
 
-    // Verify the transaction actually succeeded
     if (!result || !result.taskId) {
       console.error("❌ Transfer failed: No taskId returned");
       
-      // Save as FAILED for sender only
       const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
       
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
-        toAccountNumber: toInput, // Save exactly what was typed
+        toAccountNumber: toInput,
         amount: amount,
         status: 'failed',
         taskId: null,
@@ -374,31 +432,37 @@ app.post('/api/transfer', async (req, res) => {
       });
     }
 
-    console.log("✅ Transfer successful with taskId:", result.taskId);
+    console.log(`✅ Transfer submitted with taskId: ${result.taskId}`);
 
-    // Save SUCCESSFUL transaction
-    // KEY: toAccountNumber stores EXACTLY what the sender typed (account number OR address)
-    // Get sender info for the transaction record
+    // CRITICAL: Check if transaction actually succeeded on-chain
+    const taskStatus = await checkGelatoTaskStatus(result.taskId);
+
     const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
     
     await new Transaction({
       fromAddress: safeAddress.toLowerCase(),
       fromAccountNumber: sender ? sender.accountNumber : null,
       toAddress: recipientAddress,
-      toAccountNumber: toInput, // This is what was typed - could be account number or address
+      toAccountNumber: toInput,
       amount: amount,
-      status: 'successful',
+      status: taskStatus.status, // 'successful' or 'failed'
       taskId: result.taskId,
       type: 'transfer',
       date: new Date()
     }).save();
+
+    if (!taskStatus.success) {
+      return res.status(400).json({ 
+        success: false, 
+        message: taskStatus.reason || "Transfer reverted on blockchain"
+      });
+    }
 
     res.json({ success: true, taskId: result.taskId });
 
   } catch (error) {
     console.error("❌ Transfer failed:", error.message);
     
-    // Save as failed if exception occurs
     try {
       const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
       const recipient = await resolveUser(req.body.toInput);
@@ -407,7 +471,7 @@ app.post('/api/transfer', async (req, res) => {
         fromAddress: req.body.safeAddress.toLowerCase(),
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(req.body.toInput) ? null : req.body.toInput.toLowerCase()),
-        toAccountNumber: req.body.toInput, // Save what was typed
+        toAccountNumber: req.body.toInput,
         amount: req.body.amount,
         status: 'failed',
         taskId: null,
@@ -427,7 +491,7 @@ app.post('/api/transfer', async (req, res) => {
 });
 
 // ===============================================
-// APPROVE
+// APPROVE (Fixed with Revert Detection)
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
@@ -435,6 +499,20 @@ app.post('/api/approve', async (req, res) => {
     const amountWei = ethers.parseUnits(amount.toString(), 6);
     
     const result = await sponsorSafeApprove(safeAddress, userPrivateKey, spenderInput, amountWei);
+
+    if (!result || !result.taskId) {
+      return res.status(400).json({ message: "Approval failed to submit" });
+    }
+
+    // Check if transaction actually succeeded
+    const taskStatus = await checkGelatoTaskStatus(result.taskId);
+
+    if (!taskStatus.success) {
+      return res.status(400).json({ 
+        success: false, 
+        message: taskStatus.reason || "Approval reverted on blockchain"
+      });
+    }
 
     await Approval.findOneAndUpdate(
       { owner: safeAddress.toLowerCase(), spender: spenderInput.toLowerCase() },
@@ -449,35 +527,27 @@ app.post('/api/approve', async (req, res) => {
 });
 
 // ===============================================
-// GET TRANSACTIONS (Fixed - shows what was originally typed)
+// GET TRANSACTIONS
 // ===============================================
 app.get('/api/transactions/:address', async (req, res) => {
   try {
     const address = req.params.address.toLowerCase();
 
+    // Show BOTH successful AND failed transactions
     const transactions = await Transaction.find({
-      $and: [
-        { status: 'successful' },
-        { 
-          $or: [
-            { fromAddress: address }, 
-            { toAddress: address }
-          ] 
-        }
+      $or: [
+        { fromAddress: address }, 
+        { toAddress: address }
       ]
     }).sort({ date: -1 }).limit(50);
 
     const formatted = transactions.map(tx => {
       const isReceived = tx.toAddress?.toLowerCase() === address;
       
-      // FIXED DISPLAY LOGIC:
-      // Both sender and receiver should see what was originally typed
-      // toAccountNumber contains exactly what was typed (account number OR address)
-      
       return {
         ...tx._doc,
         displayType: isReceived ? 'receive' : 'sent',
-        displayPartner: tx.toAccountNumber // Shows what was typed, whether account number or address
+        displayPartner: tx.toAccountNumber
       };
     });
 
@@ -489,14 +559,13 @@ app.get('/api/transactions/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM (Fixed - saves what was typed for display)
+// TRANSFER FROM (Fixed with Revert Detection)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Resolve all parties
     const executor = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
     const fromUser = await resolveUser(fromInput);
     const toUser = await resolveUser(toInput);
@@ -518,7 +587,6 @@ app.post('/api/transferFrom', async (req, res) => {
     const fromAddress = fromUser.safeAddress.toLowerCase();
     const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
 
-    // Execute transferFrom on blockchain
     const result = await sponsorSafeTransferFrom(
       userPrivateKey,
       safeAddress,
@@ -527,26 +595,33 @@ app.post('/api/transferFrom', async (req, res) => {
       amountWei
     );
 
-    // Verify success
     if (!result || !result.taskId) {
-      console.error("❌ TransferFrom REVERTED: No taskId returned");
+      console.error("❌ TransferFrom failed: No taskId returned");
       return res.status(400).json({
         success: false, 
-        message: "Transfer REVERTED: Check allowance or balance."
+        message: "Transfer failed to submit"
       });
     }
 
-    console.log("✅ TransferFrom successful with taskId:", result.taskId);
+    console.log(`✅ TransferFrom submitted with taskId: ${result.taskId}`);
 
-    // Save SUCCESSFUL transaction
-    // KEY INSIGHT: Store what the puller (destination) actually typed
-    // - If they typed "1234567890" (account number), both histories show "1234567890"
-    // - If they typed "0xabc..." (address), both histories show "0xabc..."
+    // CRITICAL: Check if transaction actually succeeded on-chain
+    const taskStatus = await checkGelatoTaskStatus(result.taskId);
+
+    if (!taskStatus.success) {
+      // DO NOT SAVE TO DATABASE if it failed
+      return res.status(400).json({
+        success: false, 
+        message: taskStatus.reason || "Transfer reverted: Check allowance or balance"
+      });
+    }
+
+    // Only save if successful
     await new Transaction({
       fromAddress: fromAddress,
       fromAccountNumber: fromUser.accountNumber,
       toAddress: toAddress,
-      toAccountNumber: fromInput, // Store what the puller typed for the "from" field
+      toAccountNumber: fromInput,
       amount: amount,
       status: 'successful', 
       type: 'transferFrom',
@@ -558,10 +633,9 @@ app.post('/api/transferFrom', async (req, res) => {
 
   } catch (error) {
     console.error("❌ TransferFrom failed:", error.message);
-    // DO NOT SAVE TO DATABASE if it failed
     res.status(400).json({
       success: false, 
-      message: "Transfer failed: Check allowance or balance.", 
+      message: "Transfer failed", 
       error: error.message 
     });
   }
