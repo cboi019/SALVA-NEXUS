@@ -1,6 +1,4 @@
-// Dashboard.jsx - COMPLETE FILE (PART 1/2)
-// Copy this entire file to replace your Dashboard.jsx
-
+// Dashboard.jsx 
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';

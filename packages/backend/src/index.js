@@ -642,15 +642,25 @@ app.post('/api/transferFrom', async (req, res) => {
   }
 });
 
-// BACKEND ROUTE UPDATE - Add this to index.js
 
-// FIXED: Get incoming allowances with live sync (mirrors /api/approvals logic)
+// FIXED: Get incoming allowances - checks BOTH address and account number
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
-    const spenderAddress = req.params.address.toLowerCase();
+    const userAddress = req.params.address.toLowerCase();
     
-    // Find all approvals where THIS user is the spender
-    const savedAllowances = await Approval.find({ spender: spenderAddress });
+    // Find the user to get their account number
+    const currentUser = await User.findOne({ safeAddress: userAddress });
+    if (!currentUser) {
+      return res.json([]);
+    }
+
+    // Find approvals where the spender is EITHER the user's address OR account number
+    const savedAllowances = await Approval.find({
+      $or: [
+        { spender: userAddress },
+        { spender: currentUser.accountNumber }
+      ]
+    });
     
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
@@ -659,37 +669,47 @@ app.get('/api/allowances-for/:address', async (req, res) => {
       try {
         let ownerAddress = app.owner;
         
+        // If owner is account number, resolve to address
         if (!app.owner.startsWith('0x')) {
           const ownerUser = await User.findOne({ accountNumber: app.owner });
           if (!ownerUser) return null;
           ownerAddress = ownerUser.safeAddress;
         }
         
-        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
+        // CHECK LIVE ON-CHAIN ALLOWANCE
+        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, userAddress);
         const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
+        // DELETE FROM DB IF ALLOWANCE IS ZERO
         if (parseFloat(liveAmount) <= 0) {
           await Approval.deleteOne({ _id: app._id });
           return null;
         }
 
+        // UPDATE DB IF AMOUNT CHANGED
         if (liveAmount !== app.amount) {
           app.amount = liveAmount;
           await app.save();
         }
         
         return {
-          allower: app.owner, 
+          allower: app.owner, // Return what was originally stored (account number or address)
           amount: app.amount,
           date: app.date
         };
       } catch (err) {
-        return { allower: app.owner, amount: app.amount, date: app.date };
+        console.error(`Allowance check failed for ${app.owner}:`, err.message);
+        return {
+          allower: app.owner,
+          amount: app.amount,
+          date: app.date
+        };
       }
     }));
 
     res.json(liveAllowances.filter(app => app !== null));
   } catch (error) {
+    console.error("Critical Incoming Allowance Route Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
