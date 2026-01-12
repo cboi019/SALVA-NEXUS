@@ -347,8 +347,8 @@ app.get('/api/balance/:address', async (req, res) => {
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
   try {
-    const ownerAddress = req.params.address;
-    const savedApprovals = await Approval.find({ owner: ownerAddress.toLowerCase() });
+    const ownerAddress = req.params.address.toLowerCase();
+    const savedApprovals = await Approval.find({ owner: ownerAddress });
     
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
@@ -356,30 +356,49 @@ app.get('/api/approvals/:address', async (req, res) => {
     const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
       try {
         let spenderAddress = app.spender;
-        if (!app.spender.startsWith('0x')) {
-          const spenderUser = await User.findOne({ accountNumber: app.spender });
-          if (!spenderUser) return app;
+        let spenderDisplay = app.spender;
+
+        // 1. Resolve Spender to Address for the blockchain check
+        const spenderUser = await User.findOne({ 
+          $or: [
+            { accountNumber: app.spender },
+            { safeAddress: { $regex: new RegExp(`^${app.spender}$`, 'i') } }
+          ]
+        });
+
+        if (spenderUser) {
           spenderAddress = spenderUser.safeAddress;
+          spenderDisplay = spenderUser.accountNumber; // Keep it as Alias for UI
         }
+
+        // 2. CHECK LIVE ON-CHAIN ALLOWANCE
         const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
         const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
+        // 3. DELETE FROM DB IF REVOKED OR USED UP
         if (parseFloat(liveAmount) <= 0) {
           await Approval.deleteOne({ _id: app._id });
           return null; 
         }
 
+        // 4. SYNC DATABASE
         if (liveAmount !== app.amount) {
           await Approval.updateOne(
             { _id: app._id },
             { $set: { amount: liveAmount } }
           );
           app.amount = liveAmount;
-          await app.save();
         }
-        return app;
+
+        // Return a clean object for the frontend
+        return {
+          _id: app._id,
+          spender: spenderDisplay, // This ensures the UI shows the Alias
+          amount: app.amount,
+          date: app.date
+        };
       } catch (err) {
-        console.error(`Allowance check failed for ${app.spender}:`, err.message);
+        console.error(`Sync failed for ${app.spender}:`, err.message);
         return app;
       }
     }));
@@ -502,15 +521,24 @@ app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
     
-    // 1. Resolve Spender Input to actual Address for DB consistency
-    let finalSpenderAddress = spenderInput.toLowerCase();
-    if (!spenderInput.startsWith('0x')) {
-      const user = await User.findOne({ accountNumber: spenderInput });
-      if (user) finalSpenderAddress = user.safeAddress.toLowerCase();
-    }
+    // 1. RESOLVE INPUT: Find the user regardless of if input is Alias or Address
+    const spenderUser = await User.findOne({ 
+      $or: [
+        { accountNumber: spenderInput },
+        { safeAddress: { $regex: new RegExp(`^${spenderInput}$`, 'i') } }
+      ]
+    });
+
+    // Use resolved address for blockchain and DB key
+    const finalSpenderAddress = spenderUser ? spenderUser.safeAddress.toLowerCase() : spenderInput.toLowerCase();
+    
+    // Use Account Number for display if found, otherwise use the raw input
+    const finalDisplaySpender = spenderUser ? spenderUser.accountNumber : spenderInput;
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
-    const result = await sponsorSafeApprove(safeAddress, userPrivateKey, spenderInput, amountWei);
+    
+    // Use the final resolved address for the blockchain call
+    const result = await sponsorSafeApprove(safeAddress, userPrivateKey, finalSpenderAddress, amountWei);
 
     if (!result || !result.taskId) {
       return res.status(400).json({ message: "Approval failed to submit" });
@@ -521,20 +549,23 @@ app.post('/api/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
-    // 2. Use the RESOLVED address as the key so it overwrites existing ones
-    // We store the original 'spenderInput' in a separate field if we want to remember the alias
+    // 2. UPSERT: This now strictly uses the Safe Address as the unique key
     await Approval.findOneAndUpdate(
-      { owner: safeAddress.toLowerCase(), spender: finalSpenderAddress },
+      { 
+        owner: safeAddress.toLowerCase(), 
+        spender: finalSpenderAddress // Always the 0x address
+      },
       { 
         amount: amount, 
         date: new Date(),
-        displaySpender: spenderInput // Save the alias for the UI
+        displaySpender: finalDisplaySpender // Always the Alias (if it exists)
       },
-      { upsert: true }
+      { upsert: true, new: true }
     );
 
     res.json({ success: true, taskId: result.taskId });
   } catch (error) {
+    console.error("Approval Error:", error);
     res.status(500).json({ message: "Approval failed", error: error.message });
   }
 });
@@ -544,6 +575,37 @@ app.get('/api/debug/approvals', async (req, res) => {
   const all = await Approval.find({});
   res.json(all);
 });
+
+const cleanupApprovals = async () => {
+  const approvals = await Approval.find({});
+  
+  for (const app of approvals) {
+    let resolvedSpender = app.spender.toLowerCase();
+
+    // If it's an alias, find the actual address
+    if (!app.spender.startsWith('0x')) {
+      const user = await User.findOne({ accountNumber: app.accountNumber });
+      if (user) resolvedSpender = user.safeAddress.toLowerCase();
+    }
+
+    // Check if another record exists for the same owner + resolved address
+    const duplicate = await Approval.findOne({
+      _id: { $ne: app._id }, // Not this current record
+      owner: app.owner.toLowerCase(),
+      spender: resolvedSpender
+    });
+
+    if (duplicate) {
+      console.log(`Merging ${app.spender} into ${resolvedSpender}`);
+      // Keep the one with the higher amount or more recent date, delete the other
+      await Approval.deleteOne({ _id: app._id });
+    } else if (app.spender !== resolvedSpender) {
+      // If no duplicate, but the current record uses an alias, update it to the address
+      app.spender = resolvedSpender;
+      await app.save();
+    }
+  }
+};
 
 // ===============================================
 // GET TRANSACTIONS
@@ -585,62 +647,47 @@ app.post('/api/transferFrom', async (req, res) => {
     const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    const executor = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
+    // 1. Resolve everything to actual addresses
     const fromUser = await resolveUser(fromInput);
     const toUser = await resolveUser(toInput);
 
     if (!fromUser) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Source account not found" 
-      });
-    }
-
-    if (!toUser && isAccountNumber(toInput)) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Destination account not found" 
-      });
+      return res.status(404).json({ success: false, message: "Source account not found" });
     }
 
     const fromAddress = fromUser.safeAddress.toLowerCase();
+    // If toUser exists, use their safeAddress, otherwise assume toInput is a raw 0x address
     const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
+    const toAccountAlias = toUser ? toUser.accountNumber : toInput;
 
+    // 2. Pass RESOLVED addresses to the blockchain function
     const result = await sponsorSafeTransferFrom(
       userPrivateKey,
-      safeAddress,
-      fromInput,
-      toInput,
+      safeAddress,  // The person executing the pull (the spender)
+      fromAddress,  // The person who gave the allowance
+      toAddress,    // Where the money is going
       amountWei
     );
 
     if (!result || !result.taskId) {
-      console.error("❌ TransferFrom failed: No taskId returned");
-      return res.status(400).json({
-        success: false, 
-        message: "Transfer failed to submit"
-      });
+      return res.status(400).json({ success: false, message: "Transfer failed to submit" });
     }
 
-    console.log(`✅ TransferFrom submitted with taskId: ${result.taskId}`);
-
-    // CRITICAL: Check if transaction actually succeeded on-chain
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
-
     if (!taskStatus.success) {
-      // DO NOT SAVE TO DATABASE if it failed
       return res.status(400).json({
         success: false, 
         message: taskStatus.reason || "Transfer reverted: Check allowance or balance"
       });
     }
 
-    // Only save if successful
+    // 3. Save to Database with CORRECT mapping
     await new Transaction({
       fromAddress: fromAddress,
-      fromAccountNumber: fromUser.accountNumber,
+      fromAccountNumber: fromUser.accountNumber, // The Allower's alias
       toAddress: toAddress,
-      toAccountNumber: fromInput,
+      toAccountNumber: toAccountAlias,         // The Receiver's alias (NOT fromInput!)
+      executorAddress: safeAddress.toLowerCase(), // The Spender who triggered the pull
       amount: amount,
       status: 'successful', 
       type: 'transferFrom',
@@ -652,11 +699,7 @@ app.post('/api/transferFrom', async (req, res) => {
 
   } catch (error) {
     console.error("❌ TransferFrom failed:", error.message);
-    res.status(400).json({
-      success: false, 
-      message: "Transfer failed", 
-      error: error.message 
-    });
+    res.status(400).json({ success: false, message: "Transfer failed", error: error.message });
   }
 });
 
