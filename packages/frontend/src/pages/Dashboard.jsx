@@ -24,7 +24,7 @@ const Dashboard = () => {
 
   // STATE FOR AUTHORIZED LIST (Outgoing & Incoming)
   const [approvals, setApprovals] = useState([]);
-  const [incomingAllowances, setIncomingAllowances] = useState([]); // NEW: Who authorized ME
+  const [incomingAllowances, setIncomingAllowances] = useState([]); 
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
 
   const navigate = useNavigate();
@@ -38,12 +38,12 @@ const Dashboard = () => {
         fetchBalance(parsedUser.safeAddress);
         fetchTransactions(parsedUser.safeAddress);
         fetchApprovals(parsedUser.safeAddress);
-        fetchIncomingAllowances(parsedUser.safeAddress); // NEW
+        fetchIncomingAllowances(parsedUser.safeAddress);
 
         // SYNC UPDATE: Automatically poll every 30 seconds
         const interval = setInterval(() => {
           fetchApprovals(parsedUser.safeAddress, true);
-          fetchIncomingAllowances(parsedUser.safeAddress, true); // NEW
+          fetchIncomingAllowances(parsedUser.safeAddress, true);
         }, 30000);
         return () => clearInterval(interval);
 
@@ -108,9 +108,8 @@ const Dashboard = () => {
     }
   };
 
-  // NEW: Fetch allowances where I am the spender
   const fetchIncomingAllowances = async (address, silent = false) => {
-    if(!silent) setIsRefreshingApprovals(true); // Add this line to trigger "SYNCING"
+    if(!silent) setIsRefreshingApprovals(true); // FIXED: Added sync state trigger
     try {
       const res = await fetch(`${API_BASE_URL}/api/allowances-for/${address}`);
       const data = await res.json();
@@ -118,7 +117,7 @@ const Dashboard = () => {
     } catch (err) {
       console.error("Failed to load incoming allowances");
     } finally {
-      setIsRefreshingApprovals(false); // Add this line to stop "SYNCING"
+      setIsRefreshingApprovals(false); // FIXED: Stops syncing animation
     }
   };
 
@@ -234,7 +233,10 @@ const Dashboard = () => {
         if (response.ok) {
             showMsg("Approval updated on-chain!");
             setApproveData({ spender: '', amount: '' });
-            setTimeout(() => fetchApprovals(user.safeAddress), 4000);
+            setTimeout(() => {
+              fetchApprovals(user.safeAddress);
+              fetchIncomingAllowances(user.safeAddress, true); // Update both lists
+            }, 4000);
         }
         else showMsg("Approval failed", "error");
     } catch (err) { showMsg("Connection error", "error"); }
@@ -491,11 +493,16 @@ const handleTransferFrom = async (e) => {
               </form>
             </div>
 
-            {/* NEW: INCOMING ALLOWANCES BOX */}
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances</h4>
-                <button onClick={() => fetchIncomingAllowances(user.safeAddress)} className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}> {isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}</button>
+                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances For Me</h4>
+                {/* FIXED: Refresh button now triggers "SYNCING..." text */}
+                <button 
+                  onClick={() => fetchIncomingAllowances(user.safeAddress)} 
+                  className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}
+                >
+                  {isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}
+                </button>
               </div>
               <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
                 {incomingAllowances.length > 0 ? (
@@ -615,5 +622,3 @@ const handleTransferFrom = async (e) => {
 };
 
 export default Dashboard;
-
-
