@@ -508,21 +508,20 @@ const handleTransferFrom = async (e) => {
                 {incomingAllowances.length > 0 ? (
                   <div className="space-y-3">
                     {incomingAllowances.map((app, i) => (
-                      <div key={i} className="p-3 bg-black/20 rounded-xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all"
-                        onClick={() => setTransferFromData({ ...transferFromData, from: app.allower, amount: app.amount })}
-                      >
-                         <div className="flex justify-between items-center">
+                      <div key={i} className="p-3 bg-black/20 rounded-xl border border-white/5 ...">
+                          <div className="flex justify-between items-center">
                             <div className="min-w-0 pr-2">
+                               {/* We use app.allower because that is the 'owner' in your Schema */}
                                <p className="font-mono text-[10px] text-salvaGold truncate">{app.allower}</p>
                                <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Me</p>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                               <p className="font-black text-xs text-green-400">{formatNumber(app.amount)}</p>
-                               <p className="text-[8px] opacity-40 uppercase font-bold">Available</p>
-                            </div>
+                           </div>
+                           <div className="text-right flex-shrink-0">
+                              <p className="font-black text-xs text-green-400">{formatNumber(app.amount)}</p>
+                              <p className="text-[8px] opacity-40 uppercase font-bold">Available</p>
+                           </div>
                          </div>
-                      </div>
-                    ))}
+                       </div>
+                     ))}
                     <p className="text-[8px] text-center opacity-30 uppercase font-bold mt-2 italic">Tap an item to autofill form</p>
                   </div>
                 ) : (

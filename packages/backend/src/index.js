@@ -642,58 +642,23 @@ app.post('/api/transferFrom', async (req, res) => {
   }
 });
 
-// ===============================================
-// GET ALLOWANCES FOR SPENDER (Who authorized ME?)
-// ===============================================
+// This is what the Transfer From tab needs to call
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
-    const spenderAddress = req.params.address.toLowerCase();
-
-    // 1. Find all approvals in MongoDB where THIS user is the spender
-    // We check for both the safeAddress and the accountNumber just in case
-    const spenderUser = await User.findOne({ safeAddress: spenderAddress });
-    const query = { 
-      $or: [
-        { spender: spenderAddress },
-        { spender: spenderUser?.accountNumber }
-      ]
-    };
-
-    const savedAllowances = await Approval.find(query);
-
-    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
-    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
-
-    // 2. Cross-check with Blockchain to get live remaining amounts
-    const liveAllowances = await Promise.all(savedAllowances.map(async (app) => {
-      try {
-        // The 'owner' in the DB is the person who gave the permission (The Allower)
-        const ownerAddress = app.owner; 
-        
-        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
-        const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
-
-        // AUTO-DELETE: If they spent it all or it was revoked, remove from DB
-        if (parseFloat(liveAmount) <= 0) {
-          await Approval.deleteOne({ _id: app._id });
-          return null;
-        }
-
-        return {
-          allower: app.owner, // Display the address/account of the person who gave the money
-          amount: liveAmount,
-          date: app.date
-        };
-      } catch (err) {
-        return null;
-      }
+    const { address } = req.params;
+    // We search the 'spender' column for the user's address
+    const allowances = await Approval.find({ spender: address });
+    
+    // Map it so the frontend knows who the "allower" (owner) is
+    const formatted = allowances.map(app => ({
+      allower: app.owner, // The person who gave you the money
+      amount: app.amount,
+      date: app.date
     }));
-
-    // Filter out nulls and send to frontend
-    res.json(liveAllowances.filter(a => a !== null));
-  } catch (error) {
-    console.error("❌ Error fetching incoming allowances:", error);
-    res.status(500).json([]);
+    
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching allowances" });
   }
 });
 
