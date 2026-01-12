@@ -22,8 +22,9 @@ const Dashboard = () => {
   const [approveData, setApproveData] = useState({ spender: '', amount: '' });
   const [transferFromData, setTransferFromData] = useState({ from: '', to: '', amount: '' });
 
-  // STATE FOR AUTHORIZED LIST
+  // STATE FOR AUTHORIZED LIST (Outgoing & Incoming)
   const [approvals, setApprovals] = useState([]);
+  const [incomingAllowances, setIncomingAllowances] = useState([]); // NEW: Who authorized ME
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
 
   const navigate = useNavigate();
@@ -37,10 +38,12 @@ const Dashboard = () => {
         fetchBalance(parsedUser.safeAddress);
         fetchTransactions(parsedUser.safeAddress);
         fetchApprovals(parsedUser.safeAddress);
+        fetchIncomingAllowances(parsedUser.safeAddress); // NEW
 
-        // SYNC UPDATE: Automatically poll every 30 seconds to catch spender pull-outs
+        // SYNC UPDATE: Automatically poll every 30 seconds
         const interval = setInterval(() => {
-          fetchApprovals(parsedUser.safeAddress, true); // true = silent refresh
+          fetchApprovals(parsedUser.safeAddress, true);
+          fetchIncomingAllowances(parsedUser.safeAddress, true); // NEW
         }, 30000);
         return () => clearInterval(interval);
 
@@ -98,10 +101,21 @@ const Dashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/approvals/${address}`);
       const data = await res.json();
       setApprovals(data);
-    } catch (eer) {
+    } catch (err) {
       console.error("Failed to load list");
     } finally {
       setIsRefreshingApprovals(false);
+    }
+  };
+
+  // NEW: Fetch allowances where I am the spender
+  const fetchIncomingAllowances = async (address, silent = false) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/allowances-for/${address}`);
+      const data = await res.json();
+      setIncomingAllowances(data);
+    } catch (err) {
+      console.error("Failed to load incoming allowances");
     }
   };
 
@@ -244,14 +258,13 @@ const handleTransferFrom = async (e) => {
 
         if (response.ok) {
             showMsg("Pull request sent to relay!");
-            // ONLY REFRESH IF THE BLOCKCHAIN ACTUALLY ACCEPTED IT
             setTimeout(() => {
                 fetchBalance(user.safeAddress);
                 fetchTransactions(user.safeAddress);
                 fetchApprovals(user.safeAddress, true);
+                fetchIncomingAllowances(user.safeAddress, true);
             }, 7000); 
         } else {
-            // STOP EVERYTHING: Do not refresh, do not update UI
             showMsg(result.message || "TransferFrom REVERTED", "error");
         }
     } catch (err) { 
@@ -458,16 +471,57 @@ const handleTransferFrom = async (e) => {
         )}
 
         {activeTab === 'transferFrom' && (
-          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 min-h-[350px]">
-            <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
-            <form onSubmit={handleTransferFrom} className="space-y-4">
-              <input required placeholder="From (Account or Address)" className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})}/>
-              <input required placeholder="To (Account or Address)" className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})}/>
-              <input required placeholder="Amount" type="number" className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})}/>
-              <button disabled={loading} className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all">
-                {loading ? 'EXECUTING...' : 'CONFIRM PULL'}
-              </button>
-            </form>
+          <motion.section 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start"
+          >
+            <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 min-h-[350px]">
+              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
+              <form onSubmit={handleTransferFrom} className="space-y-4">
+                <input required placeholder="From (Account or Address)" value={transferFromData.from} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})}/>
+                <input required placeholder="To (Account or Address)" value={transferFromData.to} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})}/>
+                <input required placeholder="Amount" type="number" value={transferFromData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})}/>
+                <button disabled={loading} className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all">
+                  {loading ? 'EXECUTING...' : 'CONFIRM PULL'}
+                </button>
+              </form>
+            </div>
+
+            {/* NEW: INCOMING ALLOWANCES BOX */}
+            <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
+              <div className="flex justify-between items-center mb-4 flex-shrink-0">
+                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances For Me</h4>
+                <button onClick={() => fetchIncomingAllowances(user.safeAddress)} className="text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all">REFRESH ↻</button>
+              </div>
+              <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
+                {incomingAllowances.length > 0 ? (
+                  <div className="space-y-3">
+                    {incomingAllowances.map((app, i) => (
+                      <div key={i} className="p-3 bg-black/20 rounded-xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all"
+                        onClick={() => setTransferFromData({ ...transferFromData, from: app.allower, amount: app.amount })}
+                      >
+                         <div className="flex justify-between items-center">
+                            <div className="min-w-0 pr-2">
+                               <p className="font-mono text-[10px] text-salvaGold truncate">{app.allower}</p>
+                               <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Me</p>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                               <p className="font-black text-xs text-green-400">{formatNumber(app.amount)}</p>
+                               <p className="text-[8px] opacity-40 uppercase font-bold">Available</p>
+                            </div>
+                         </div>
+                      </div>
+                    ))}
+                    <p className="text-[8px] text-center opacity-30 uppercase font-bold mt-2 italic">Tap an item to autofill form</p>
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center py-10 opacity-20">
+                    <p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">No one has<br/>authorized you</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </motion.section>
         )}
       </div>
