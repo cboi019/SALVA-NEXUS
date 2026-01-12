@@ -15,6 +15,7 @@ const { Resend } = require('resend');
 const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
 const Approval = require('./models/Approval');
 
+
 // Initialize Resend and Gelato
 const resend = new Resend(process.env.RESEND_API_KEY);
 const relay = new GelatoRelay();

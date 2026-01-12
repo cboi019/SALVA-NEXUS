@@ -1,3 +1,4 @@
+// Home.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, animate } from 'framer-motion';
 import { Instagram, Github } from 'lucide-react';
