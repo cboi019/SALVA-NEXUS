@@ -23,6 +23,18 @@
   to { opacity: 1; }
 }
 
+/* Add this to your existing src/index.css */
+@layer components {
+  .animate-spin {
+    animation: spin 1s linear infinite;
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 html {
   background-color: #000000;
   transition: background-color 0.3s ease;
