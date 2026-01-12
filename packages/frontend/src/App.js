@@ -1,10 +1,10 @@
-// App.js
+// src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import Login from './pages/Login';
-import ForgotPassword from './pages/ForgotPassword'; // <--- ADD THIS
+import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
 
@@ -19,30 +19,34 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <Router>
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} /> {/* <--- ADD THIS */}
-        
-        <Route 
-          path="/dashboard" 
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          } 
-        />
-        
-        <Route 
-          path="/transactions" 
-          element={
-            <ProtectedRoute>
-              <Transactions />
-            </ProtectedRoute>
-          } 
-        />
-      </Routes>
+      <div className="min-h-screen bg-black transition-opacity duration-500">
+        <Navbar />
+        <main className="animate-in fade-in duration-700"> {/* Tailwind animation class */}
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/transactions" 
+              element={
+                <ProtectedRoute>
+                  <Transactions />
+                </ProtectedRoute>
+              } 
+            />
+          </Routes>
+        </main>
+      </div>
     </Router>
   );
 }
