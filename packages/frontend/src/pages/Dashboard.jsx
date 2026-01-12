@@ -303,7 +303,7 @@ const Dashboard = () => {
                     {approvals.map((app, i) => (
                       <div key={i} className="flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5">
                         <div className="min-w-0 pr-2">
-                          <p className="font-mono text-[10px] text-salvaGold truncate">{app.spender}</p>
+                          <p className="font-mono text-[10px] text-salvaGold truncate">{app.displaySpender || app.spender}</p>
                           <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Spender</p>
                         </div>
                         <div className="text-right flex-shrink-0">

@@ -370,6 +370,10 @@ app.get('/api/approvals/:address', async (req, res) => {
         }
 
         if (liveAmount !== app.amount) {
+          await Approval.updateOne(
+            { _id: app._id },
+            { $set: { amount: liveAmount } }
+          );
           app.amount = liveAmount;
           await app.save();
         }
@@ -497,35 +501,37 @@ app.post('/api/transfer', async (req, res) => {
 app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
-    const amountWei = ethers.parseUnits(amount.toString(), 6);
     
+    // 1. Resolve Spender Input to actual Address for DB consistency
+    let finalSpenderAddress = spenderInput.toLowerCase();
+    if (!spenderInput.startsWith('0x')) {
+      const user = await User.findOne({ accountNumber: spenderInput });
+      if (user) finalSpenderAddress = user.safeAddress.toLowerCase();
+    }
+
+    const amountWei = ethers.parseUnits(amount.toString(), 6);
     const result = await sponsorSafeApprove(safeAddress, userPrivateKey, spenderInput, amountWei);
 
     if (!result || !result.taskId) {
       return res.status(400).json({ message: "Approval failed to submit" });
     }
 
-    // Check if transaction actually succeeded
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
-
     if (!taskStatus.success) {
-      return res.status(400).json({ 
-        success: false, 
-        message: taskStatus.reason || "Approval reverted on blockchain"
-      });
+      return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
+    // 2. Use the RESOLVED address as the key so it overwrites existing ones
+    // We store the original 'spenderInput' in a separate field if we want to remember the alias
     await Approval.findOneAndUpdate(
-      { owner: safeAddress.toLowerCase(), spender: spenderInput.toLowerCase() },
-      { amount: amount, date: new Date() },
+      { owner: safeAddress.toLowerCase(), spender: finalSpenderAddress },
+      { 
+        amount: amount, 
+        date: new Date(),
+        displaySpender: spenderInput // Save the alias for the UI
+      },
       { upsert: true }
     );
-
-    console.log("✅ APPROVAL SAVED:", {
-      owner: safeAddress.toLowerCase(),
-      spender: spenderInput.toLowerCase(),
-      amount: amount
-    });
 
     res.json({ success: true, taskId: result.taskId });
   } catch (error) {
@@ -688,12 +694,19 @@ app.get('/api/allowances-for/:address', async (req, res) => {
     const liveAllowances = await Promise.all(savedAllowances.map(async (app) => {
       try {
         let ownerAddress = app.owner;
+        let ownerDisplay = app.owner;
+
+        // Resolve owner address and find their alias
+        const ownerUser = await User.findOne({ 
+          $or: [
+            { safeAddress: { $regex: new RegExp(`^${app.owner}$`, 'i') } },
+            { accountNumber: app.owner }
+          ]
+        });
         
-        // If owner is account number, resolve to address
-        if (!app.owner.startsWith('0x')) {
-          const ownerUser = await User.findOne({ accountNumber: app.owner });
-          if (!ownerUser) return null;
+        if (ownerUser) {
           ownerAddress = ownerUser.safeAddress;
+          ownerDisplay = ownerUser.accountNumber; // Set display to alias
         }
         
         // CHECK LIVE ON-CHAIN ALLOWANCE
@@ -706,24 +719,19 @@ app.get('/api/allowances-for/:address', async (req, res) => {
           return null;
         }
 
-        // UPDATE DB IF AMOUNT CHANGED
         if (liveAmount !== app.amount) {
-          app.amount = liveAmount;
-          await app.save();
+          await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
         }
         
         return {
-          allower: app.owner, // Return what was originally stored (account number or address)
-          amount: app.amount,
+          allower: ownerDisplay, // Return what was originally stored (account number or address)
+          allowerAddress: ownerAddress,
+          amount: liveAmount,
           date: app.date
         };
       } catch (err) {
         console.error(`Allowance check failed for ${app.owner}:`, err.message);
-        return {
-          allower: app.owner,
-          amount: app.amount,
-          date: app.date
-        };
+        return null;
       }
     }));
 
