@@ -642,23 +642,55 @@ app.post('/api/transferFrom', async (req, res) => {
   }
 });
 
-// This is what the Transfer From tab needs to call
+// BACKEND ROUTE UPDATE - Add this to index.js
+
+// FIXED: Get incoming allowances with live sync (mirrors /api/approvals logic)
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
-    const { address } = req.params;
-    // We search the 'spender' column for the user's address
-    const allowances = await Approval.find({ spender: address });
+    const spenderAddress = req.params.address.toLowerCase();
     
-    // Map it so the frontend knows who the "allower" (owner) is
-    const formatted = allowances.map(app => ({
-      allower: app.owner, // The person who gave you the money
-      amount: app.amount,
-      date: app.date
+    // Find all approvals where THIS user is the spender
+    const savedAllowances = await Approval.find({ spender: spenderAddress });
+    
+    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
+    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+    
+    const liveAllowances = await Promise.all(savedAllowances.map(async (app) => {
+      try {
+        let ownerAddress = app.owner;
+        
+        if (!app.owner.startsWith('0x')) {
+          const ownerUser = await User.findOne({ accountNumber: app.owner });
+          if (!ownerUser) return null;
+          ownerAddress = ownerUser.safeAddress;
+        }
+        
+        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
+        const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
+        
+        if (parseFloat(liveAmount) <= 0) {
+          await Approval.deleteOne({ _id: app._id });
+          return null;
+        }
+
+        if (liveAmount !== app.amount) {
+          app.amount = liveAmount;
+          await app.save();
+        }
+        
+        return {
+          allower: app.owner, 
+          amount: app.amount,
+          date: app.date
+        };
+      } catch (err) {
+        return { allower: app.owner, amount: app.amount, date: app.date };
+      }
     }));
-    
-    res.json(formatted);
-  } catch (err) {
-    res.status(500).json({ message: "Error fetching allowances" });
+
+    res.json(liveAllowances.filter(app => app !== null));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

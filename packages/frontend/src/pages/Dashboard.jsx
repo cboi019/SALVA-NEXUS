@@ -1,4 +1,6 @@
-// Dashboard.jsx - SALVA DIGITAL TECH STABLECOIN DASHBOARD
+// Dashboard.jsx - COMPLETE FILE (PART 1/2)
+// Copy this entire file to replace your Dashboard.jsx
+
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,17 +18,12 @@ const Dashboard = () => {
   const [notification, setNotification] = useState({ show: false, message: '', type: '' });
   const [amountError, setAmountError] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
-
-  // NEW STATES FOR UPDATED FEATURES
   const [activeTab, setActiveTab] = useState('activity'); 
   const [approveData, setApproveData] = useState({ spender: '', amount: '' });
   const [transferFromData, setTransferFromData] = useState({ from: '', to: '', amount: '' });
-
-  // STATE FOR AUTHORIZED LIST (Outgoing & Incoming)
   const [approvals, setApprovals] = useState([]);
   const [incomingAllowances, setIncomingAllowances] = useState([]); 
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
-
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,14 +36,11 @@ const Dashboard = () => {
         fetchTransactions(parsedUser.safeAddress);
         fetchApprovals(parsedUser.safeAddress);
         fetchIncomingAllowances(parsedUser.safeAddress);
-
-        // SYNC UPDATE: Automatically poll every 30 seconds
         const interval = setInterval(() => {
           fetchApprovals(parsedUser.safeAddress, true);
           fetchIncomingAllowances(parsedUser.safeAddress, true);
         }, 30000);
         return () => clearInterval(interval);
-
       } catch (error) {
         window.location.href = '/login';
       }
@@ -72,17 +66,14 @@ const Dashboard = () => {
     }
   }, [transferData.amount, balance]);
 
-  const showMsg = (msg, type = 'success') =>
-    setNotification({ show: true, message: msg, type });
+  const showMsg = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
 
   const fetchBalance = async (address) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/balance/${address}`);
       const data = await res.json();
       setBalance(parseFloat(data.balance || 0).toFixed(2));
-    } catch {
-      setBalance('0.00');
-    }
+    } catch { setBalance('0.00'); }
   };
 
   const fetchTransactions = async (address) => {
@@ -90,9 +81,7 @@ const Dashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/transactions/${address}`);
       const data = await res.json();
       setTransactions(Array.isArray(data) ? data : []);
-    } catch {
-      setTransactions([]);
-    }
+    } catch { setTransactions([]); }
   };
 
   const fetchApprovals = async (address, silent = false) => {
@@ -101,78 +90,59 @@ const Dashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/approvals/${address}`);
       const data = await res.json();
       setApprovals(data);
-    } catch (err) {
-      console.error("Failed to load list");
-    } finally {
-      setIsRefreshingApprovals(false);
-    }
+    } catch (err) { console.error("Failed to load list"); }
+    finally { setIsRefreshingApprovals(false); }
   };
 
   const fetchIncomingAllowances = async (address, silent = false) => {
-    if(!silent) setIsRefreshingApprovals(true); // FIXED: Added sync state trigger
+    if(!silent) setIsRefreshingApprovals(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/allowances-for/${address}`);
       const data = await res.json();
       setIncomingAllowances(data);
-    } catch (err) {
-      console.error("Failed to load incoming allowances");
-    } finally {
-      setIsRefreshingApprovals(false); // FIXED: Stops syncing animation
-    }
+    } catch (err) { console.error("Failed to load incoming allowances"); }
+    finally { setIsRefreshingApprovals(false); }
   };
 
-  const formatNumber = (num) =>
-    parseFloat(num).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
+  const formatNumber = (num) => parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const downloadReceipt = (e, tx) => {
     e.stopPropagation();
     const doc = new jsPDF();
     const gold = [212, 175, 55];
     const dark = [10, 10, 11];
-
     doc.setFillColor(dark[0], dark[1], dark[2]);
     doc.rect(0, 0, 210, 297, 'F');
     doc.setDrawColor(gold[0], gold[1], gold[2]);
     doc.setLineWidth(1);
     doc.rect(10, 10, 190, 277);
-
     doc.setTextColor(gold[0], gold[1], gold[2]);
     doc.setFontSize(40);
     doc.setFont("helvetica", "bold");
     doc.text("SALVA", 105, 45, { align: "center" });
-    
     doc.setFontSize(10);
     doc.setTextColor(255, 255, 255);
     doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
-    
     doc.setDrawColor(255, 255, 255, 0.1);
     doc.line(30, 65, 180, 65);
-
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("AMOUNT TRANSFERRED", 40, 90);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
     doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
-
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("DATE", 40, 125);
     doc.setTextColor(255, 255, 255);
     doc.text(new Date(tx.date).toLocaleString(), 40, 135);
-
     doc.setTextColor(150, 150, 150);
     doc.text("BLOCKCHAIN STATUS", 40, 155);
     doc.setTextColor(gold[0], gold[1], gold[2]);
     doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 165);
-
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
     doc.text(`REFERENCE: ${tx._id || 'SALVA-STABLE-TX'}`, 105, 270, { align: "center" });
-
     doc.save(`Salva_Receipt_${Date.now()}.pdf`);
     showMsg("Professional receipt downloaded!");
   };
@@ -181,110 +151,74 @@ const Dashboard = () => {
     e.preventDefault();
     if (amountError) return showMsg("Insufficient balance", "error");
     if (!user.ownerKey) return showMsg("Private key missing. Please re-login.", "error");
-
     setLoading(true);
     showMsg("Initiating blockchain transfer...", "info");
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userPrivateKey: user.ownerKey,
-          safeAddress: user.safeAddress,
-          toInput: transferData.to,
-          amount: transferData.amount
-        })
+        body: JSON.stringify({ userPrivateKey: user.ownerKey, safeAddress: user.safeAddress, toInput: transferData.to, amount: transferData.amount })
       });
-
       const data = await response.json();
       if (response.ok) {
         showMsg('Transfer Successful!');
         setIsSendOpen(false);
         setTransferData({ to: '', amount: '' });
-        setTimeout(() => {
-          fetchBalance(user.safeAddress);
-          fetchTransactions(user.safeAddress);
-        }, 3500);
-      } else {
-        showMsg(data.message || "Transfer failed", "error");
-      }
-    } catch (err) {
-      showMsg("Network error. Is backend running?", "error");
-    } finally {
-      setLoading(false);
-    }
+        setTimeout(() => { fetchBalance(user.safeAddress); fetchTransactions(user.safeAddress); }, 3500);
+      } else { showMsg(data.message || "Transfer failed", "error"); }
+    } catch (err) { showMsg("Network error. Is backend running?", "error"); }
+    finally { setLoading(false); }
   };
 
   const handleApprove = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-        const response = await fetch(`${API_BASE_URL}/api/approve`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userPrivateKey: user.ownerKey,
-                safeAddress: user.safeAddress,
-                spenderInput: approveData.spender,
-                amount: approveData.amount
-            })
-        });
-        if (response.ok) {
-            showMsg("Approval updated on-chain!");
-            setApproveData({ spender: '', amount: '' });
-            setTimeout(() => {
-              fetchApprovals(user.safeAddress);
-              fetchIncomingAllowances(user.safeAddress, true); // Update both lists
-            }, 4000);
-        }
-        else showMsg("Approval failed", "error");
+      const response = await fetch(`${API_BASE_URL}/api/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPrivateKey: user.ownerKey, safeAddress: user.safeAddress, spenderInput: approveData.spender, amount: approveData.amount })
+      });
+      if (response.ok) {
+        showMsg("Approval updated on-chain!");
+        setApproveData({ spender: '', amount: '' });
+        setTimeout(() => { fetchApprovals(user.safeAddress); fetchIncomingAllowances(user.safeAddress, true); }, 4000);
+      } else showMsg("Approval failed", "error");
     } catch (err) { showMsg("Connection error", "error"); }
     setLoading(false);
   };
 
-const handleTransferFrom = async (e) => {
+  const handleTransferFrom = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-        const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userPrivateKey: user.ownerKey,
-                safeAddress: user.safeAddress,
-                fromInput: transferFromData.from,
-                toInput: transferFromData.to,
-                amount: transferFromData.amount
-            })
-        });
+      const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userPrivateKey: user.ownerKey, safeAddress: user.safeAddress, fromInput: transferFromData.from, toInput: transferFromData.to, amount: transferFromData.amount })
+      });
+      const result = await response.json();
+      if (response.ok) {
+        showMsg("Pull request sent to relay!");
+        setTransferFromData({ from: '', to: '', amount: '' });
+        setTimeout(() => { fetchBalance(user.safeAddress); fetchTransactions(user.safeAddress); fetchApprovals(user.safeAddress, true); fetchIncomingAllowances(user.safeAddress, true); }, 7000);
+      } else { showMsg(result.message || "TransferFrom REVERTED", "error"); }
+    } catch (err) { showMsg("Network Error: Pull failed", "error"); }
+    finally { setLoading(false); }
+  };
 
-        const result = await response.json();
-
-        if (response.ok) {
-            showMsg("Pull request sent to relay!");
-            setTimeout(() => {
-                fetchBalance(user.safeAddress);
-                fetchTransactions(user.safeAddress);
-                fetchApprovals(user.safeAddress, true);
-                fetchIncomingAllowances(user.safeAddress, true);
-            }, 7000); 
-        } else {
-            showMsg(result.message || "TransferFrom REVERTED", "error");
-        }
-    } catch (err) { 
-        showMsg("Network Error: Pull failed", "error"); 
-    } finally {
-        setLoading(false);
-    }
-};
+  const handleAutofillFromAllowance = (allowance) => {
+    setTransferFromData({ from: allowance.allower, to: user.accountNumber || user.safeAddress, amount: allowance.amount });
+    showMsg("Form autofilled from allowance", "success");
+  };
 
   if (!user) return null;
+
+  // SEE NEXT MESSAGE FOR JSX (Part 2)
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
       <Stars />
-
       <div className="max-w-4xl mx-auto relative z-10">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-12">
           <div>
@@ -293,67 +227,33 @@ const handleTransferFrom = async (e) => {
           </div>
           <div className="bg-gray-100 dark:bg-white/5 p-4 rounded-2xl w-full sm:w-auto">
             <p className="text-[10px] uppercase opacity-40 font-bold">Account Number</p>
-            <p className="font-mono font-bold text-salvaGold text-sm sm:text-base">
-              {showBalance ? user.accountNumber : '••••••••••'}
-            </p>
+            <p className="font-mono font-bold text-salvaGold text-sm sm:text-base">{showBalance ? user.accountNumber : '••••••••••'}</p>
           </div>
         </header>
 
         <div className="rounded-3xl bg-gray-100 dark:bg-black p-6 sm:p-10 mb-8 border border-white/5 shadow-2xl overflow-hidden">
           <div className="flex justify-between items-center mb-4">
             <p className="uppercase text-[10px] sm:text-xs opacity-40 font-bold tracking-widest">Available Balance</p>
-            <button onClick={() => setShowBalance(!showBalance)} className="hover:scale-110 transition-transform p-2">
-              {showBalance ? '👁' : '👁‍🗨'}
-            </button>
+            <button onClick={() => setShowBalance(!showBalance)} className="hover:scale-110 transition-transform p-2">{showBalance ? '👁' : '👁‍🗨'}</button>
           </div>
-          
           <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-3 overflow-hidden">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter leading-none whitespace-nowrap">
-              {showBalance ? formatNumber(balance) : '••••••.••'}
-            </h1>
-            <span className="text-salvaGold text-xl sm:text-2xl font-black mt-1 sm:mt-0">
-              NGNs
-            </span>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter leading-none whitespace-nowrap">{showBalance ? formatNumber(balance) : '••••••.••'}</h1>
+            <span className="text-salvaGold text-xl sm:text-2xl font-black mt-1 sm:mt-0">NGNs</span>
           </div>
-
           <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-8 sm:mt-10">
-            <button onClick={() => setIsSendOpen(true)} className="bg-salvaGold hover:bg-yellow-600 transition-colors text-black font-black py-4 rounded-2xl shadow-lg shadow-salvaGold/20 text-sm sm:text-base">
-              SEND
-            </button>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(user.accountNumber);
-                showMsg("Account number copied!");
-              }}
-              className="border border-salvaGold/30 hover:bg-white/5 transition-all py-4 rounded-2xl font-bold text-sm sm:text-base"
-            >
-              RECEIVE
-            </button>
+            <button onClick={() => setIsSendOpen(true)} className="bg-salvaGold hover:bg-yellow-600 transition-colors text-black font-black py-4 rounded-2xl shadow-lg shadow-salvaGold/20 text-sm sm:text-base">SEND</button>
+            <button onClick={() => { navigator.clipboard.writeText(user.accountNumber); showMsg("Account number copied!"); }} className="border border-salvaGold/30 hover:bg-white/5 transition-all py-4 rounded-2xl font-bold text-sm sm:text-base">RECEIVE</button>
           </div>
         </div>
 
-        <div
-          onClick={() => {
-            navigator.clipboard.writeText(user.safeAddress);
-            showMsg("Wallet address copied!");
-          }}
-          className="mb-8 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all"
-        >
+        <div onClick={() => { navigator.clipboard.writeText(user.safeAddress); showMsg("Wallet address copied!"); }} className="mb-8 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all">
           <p className="text-[10px] uppercase opacity-40 font-bold mb-1 tracking-widest">Smart Wallet Address (Base)</p>
-          <p className="font-mono text-[10px] sm:text-xs text-salvaGold font-medium break-all truncate">
-            {showBalance ? user.safeAddress : '0x••••••••••••••••••••••••••••••••••••••••'}
-          </p>
+          <p className="font-mono text-[10px] sm:text-xs text-salvaGold font-medium break-all truncate">{showBalance ? user.safeAddress : '0x••••••••••••••••••••••••••••••••••••••••'}</p>
         </div>
 
         <div className="flex border-b border-white/10 mb-6 gap-8 overflow-x-auto no-scrollbar">
           {['activity', 'approve', 'transferFrom'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`pb-2 text-[10px] uppercase tracking-widest font-black transition-all whitespace-nowrap ${
-                activeTab === tab ? 'border-b-2 border-salvaGold text-salvaGold' : 'opacity-40 hover:opacity-100'
-              }`}
-            >
+            <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-2 text-[10px] uppercase tracking-widest font-black transition-all whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-salvaGold text-salvaGold' : 'opacity-40 hover:opacity-100'}`}>
               {tab === 'activity' ? 'Recent Activity' : tab.replace(/([A-Z])/g, ' $1')}
             </button>
           ))}
@@ -363,239 +263,128 @@ const handleTransferFrom = async (e) => {
           <section className="px-1">
             <div className="flex justify-between items-end mb-6">
               <h3 className="uppercase tracking-widest text-salvaGold text-[10px] sm:text-xs font-bold">History</h3>
-              <Link to="/transactions" className="text-[10px] uppercase tracking-tighter opacity-50 hover:opacity-100 transition-opacity font-bold underline">
-                View All
-              </Link>
+              <Link to="/transactions" className="text-[10px] uppercase tracking-tighter opacity-50 hover:opacity-100 transition-opacity font-bold underline">View All</Link>
             </div>
-            
             <div className="space-y-3">
               {transactions.length > 0 ? (
                 transactions.slice(0, 5).map((tx, i) => (
-                  <div
-                    key={i}
-                    onClick={() => navigate('/transactions')}
-                    className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4"
-                  >
+                  <div key={i} onClick={() => navigate('/transactions')} className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4">
                     <div className="min-w-0">
-                      <p className="font-bold text-sm sm:text-base truncate">
-                        {tx.displayType === 'receive' ? `From: ${tx.displayPartner}` : `To: ${tx.displayPartner}`}
-                      </p>
+                      <p className="font-bold text-sm sm:text-base truncate">{tx.displayType === 'receive' ? `From: ${tx.displayPartner}` : `To: ${tx.displayPartner}`}</p>
                       <p className="text-[10px] sm:text-xs opacity-40 font-medium uppercase">{tx.displayType || 'Transfer'}</p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className={`font-black text-sm sm:text-base ${tx.displayType === 'receive' ? 'text-green-400' : 'text-red-400'}`}>
-                        {tx.displayType === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}
-                      </p>
-                      <button
-                        onClick={(e) => downloadReceipt(e, tx)}
-                        className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter"
-                      >
-                        Receipt ↓
-                      </button>
+                      <p className={`font-black text-sm sm:text-base ${tx.displayType === 'receive' ? 'text-green-400' : 'text-red-400'}`}>{tx.displayType === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}</p>
+                      <button onClick={(e) => downloadReceipt(e, tx)} className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter">Receipt ↓</button>
                     </div>
                   </div>
                 ))
-              ) : (
-                <p className="text-center py-10 opacity-30 text-xs font-medium uppercase tracking-widest">Vault is empty</p>
-              )}
+              ) : (<p className="text-center py-10 opacity-30 text-xs font-medium uppercase tracking-widest">Vault is empty</p>)}
             </div>
           </section>
         )}
 
         {activeTab === 'approve' && (
-          <motion.section 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start"
-          >
+          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
               <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Update Permission</h4>
               <form onSubmit={handleApprove} className="space-y-4">
-                <input 
-                  required
-                  placeholder="Spender Account or Address"
-                  value={approveData.spender}
-                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
-                  onChange={(e) => setApproveData({...approveData, spender: e.target.value})}
-                />
-                <input 
-                  required
-                  placeholder="Amount to Limit"
-                  type="number"
-                  value={approveData.amount}
-                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
-                  onChange={(e) => setApproveData({...approveData, amount: e.target.value})}
-                />
-                <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">
-                  {loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}
-                </button>
+                <input required placeholder="Spender Account or Address" value={approveData.spender} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e) => setApproveData({...approveData, spender: e.target.value})} />
+                <input required placeholder="Amount to Limit" type="number" value={approveData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e) => setApproveData({...approveData, amount: e.target.value})} />
+                <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">{loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}</button>
               </form>
             </div>
-
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
                 <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Active Permissions</h4>
-                <button 
-                  onClick={() => fetchApprovals(user.safeAddress)}
-                  className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}
-                >
-                  {isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}
-                </button>
+                <button onClick={() => fetchApprovals(user.safeAddress)} className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}>{isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}</button>
               </div>
               <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
                 {approvals.length > 0 ? (
                   <div className="space-y-3">
                     {approvals.map((app, i) => (
                       <div key={i} className="flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5">
-                         <div className="min-w-0 pr-2">
-                            <p className="font-mono text-[10px] text-salvaGold truncate">{app.spender}</p>
-                            <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Spender</p>
-                         </div>
-                         <div className="text-right flex-shrink-0">
-                            <p className="font-black text-xs">{formatNumber(app.amount)}</p>
-                            <button 
-                              onClick={() => setApproveData({ spender: app.spender, amount: '0' })}
-                              className="text-[8px] text-red-500 font-bold uppercase hover:underline"
-                            >
-                              Revoke
-                            </button>
-                         </div>
+                        <div className="min-w-0 pr-2">
+                          <p className="font-mono text-[10px] text-salvaGold truncate">{app.spender}</p>
+                          <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Spender</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-black text-xs">{formatNumber(app.amount)}</p>
+                          <button onClick={() => setApproveData({ spender: app.spender, amount: '0' })} className="text-[8px] text-red-500 font-bold uppercase hover:underline">Revoke</button>
+                        </div>
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center py-10 opacity-20">
-                    <p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">
-                      No active<br/>approvals found
-                    </p>
-                  </div>
-                )}
+                ) : (<div className="h-full flex flex-col items-center justify-center py-10 opacity-20"><p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">No active<br/>approvals found</p></div>)}
               </div>
             </div>
           </motion.section>
         )}
 
         {activeTab === 'transferFrom' && (
-          <motion.section 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start"
-          >
+          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 min-h-[350px]">
               <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
               <form onSubmit={handleTransferFrom} className="space-y-4">
-                <input required placeholder="From (Account or Address)" value={transferFromData.from} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})}/>
-                <input required placeholder="To (Account or Address)" value={transferFromData.to} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})}/>
-                <input required placeholder="Amount" type="number" value={transferFromData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})}/>
-                <button disabled={loading} className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all">
-                  {loading ? 'EXECUTING...' : 'CONFIRM PULL'}
-                </button>
+                <input required placeholder="From (Account or Address)" value={transferFromData.from} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})} />
+                <input required placeholder="To (Account or Address)" value={transferFromData.to} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})} />
+                <input required placeholder="Amount" type="number" value={transferFromData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})} />
+                <button disabled={loading} className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all">{loading ? 'EXECUTING...' : 'CONFIRM PULL'}</button>
               </form>
             </div>
-
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
                 <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances For Me</h4>
-                {/* FIXED: Refresh button now triggers "SYNCING..." text */}
-                <button 
-                  onClick={() => fetchIncomingAllowances(user.safeAddress)} 
-                  className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}
-                >
-                  {isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}
-                </button>
+                <button onClick={() => fetchIncomingAllowances(user.safeAddress)} className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}>{isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}</button>
               </div>
               <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
                 {incomingAllowances.length > 0 ? (
                   <div className="space-y-3">
                     {incomingAllowances.map((app, i) => (
-                      <div key={i} className="p-3 bg-black/20 rounded-xl border border-white/5 ...">
-                          <div className="flex justify-between items-center">
-                            <div className="min-w-0 pr-2">
-                               {/* We use app.allower because that is the 'owner'- in your Schema */}
-                               <p className="font-mono text-[10px] text-salvaGold truncate">{app.allower}</p>
-                               <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Me</p>
-                           </div>
-                           <div className="text-right flex-shrink-0">
-                              <p className="font-black text-xs text-green-400">{formatNumber(app.amount)}</p>
-                              <p className="text-[8px] opacity-40 uppercase font-bold">Available</p>
-                           </div>
-                         </div>
-                       </div>
-                     ))}
+                      <div key={i} onClick={() => handleAutofillFromAllowance(app)} className="p-3 bg-black/20 rounded-xl border border-white/5 cursor-pointer hover:border-salvaGold/40 transition-all">
+                        <div className="flex justify-between items-center">
+                          <div className="min-w-0 pr-2">
+                            <p className="font-mono text-[10px] text-salvaGold truncate">{app.allower}</p>
+                            <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Me</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="font-black text-xs text-green-400">{formatNumber(app.amount)}</p>
+                            <p className="text-[8px] opacity-40 uppercase font-bold">Available</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                     <p className="text-[8px] text-center opacity-30 uppercase font-bold mt-2 italic">Tap an item to autofill form</p>
                   </div>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center py-10 opacity-20">
-                    <p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">No one has<br/>authorized you</p>
-                  </div>
-                )}
+                ) : (<div className="h-full flex flex-col items-center justify-center py-10 opacity-20"><p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">No one has<br/>authorized you</p></div>)}
               </div>
             </div>
           </motion.section>
         )}
       </div>
-      
+
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
-            <motion.div
-              onClick={() => !loading && setIsSendOpen(false)}
-              className="absolute inset-0 bg-black/95 backdrop-blur-md"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            />
-            <motion.div
-              className="relative bg-white dark:bg-zinc-900 p-6 sm:p-12 rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg border-t sm:border border-white/10 shadow-2xl"
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            >
+            <motion.div onClick={() => !loading && setIsSendOpen(false)} className="absolute inset-0 bg-black/95 backdrop-blur-md" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
+            <motion.div className="relative bg-white dark:bg-zinc-900 p-6 sm:p-12 rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg border-t sm:border border-white/10 shadow-2xl" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }}>
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden" />
               <h3 className="text-2xl sm:text-3xl font-black mb-1">Send NGNs</h3>
               <p className="text-[10px] text-salvaGold uppercase tracking-widest font-bold mb-8">Salva Secure Transfer</p>
-
               <form onSubmit={handleTransfer} className="space-y-5">
                 <div>
                   <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Recipient</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="Enter Account Number or Address"
-                    value={transferData.to}
-                    onChange={(e) => setTransferData({ ...transferData, to: e.target.value })}
-                    className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm"
-                  />
+                  <input required type="text" placeholder="Enter Account Number or Address" value={transferData.to} onChange={(e) => setTransferData({ ...transferData, to: e.target.value })} className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm" />
                 </div>
-
                 <div>
                   <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Amount (NGN)</label>
                   <div className="relative">
-                    <input
-                      required
-                      type="number"
-                      step="0.01"
-                      value={transferData.amount}
-                      onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })}
-                      className={`w-full p-4 rounded-xl text-lg font-bold bg-gray-100 dark:bg-white/5 outline-none transition-all ${
-                        amountError ? 'border border-red-500 text-red-500' : 'border border-transparent'
-                      }`}
-                    />
+                    <input required type="number" step="0.01" value={transferData.amount} onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })} className={`w-full p-4 rounded-xl text-lg font-bold bg-gray-100 dark:bg-white/5 outline-none transition-all ${amountError ? 'border border-red-500 text-red-500' : 'border border-transparent'}`} />
                     <span className="absolute right-4 top-1/2 -translate-y-1/2 text-salvaGold font-black text-sm">NGN</span>
                   </div>
                   {amountError && <p className="text-[10px] text-red-400 mt-2 font-bold animate-pulse uppercase tracking-tight">⚠️ Balance too low.</p>}
                 </div>
-
-                <button
-                  disabled={loading || amountError}
-                  type="submit"
-                  className={`w-full py-5 rounded-2xl font-black transition-all text-sm uppercase tracking-widest ${
-                    loading || amountError ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-salvaGold text-black hover:brightness-110 active:scale-95'
-                  }`}
-                >
-                  {loading ? 'PROCESSING…' : 'CONFIRM SEND'}
-                </button>
+                <button disabled={loading || amountError} type="submit" className={`w-full py-5 rounded-2xl font-black transition-all text-sm uppercase tracking-widest ${loading || amountError ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-salvaGold text-black hover:brightness-110 active:scale-95'}`}>{loading ? 'PROCESSING…' : 'CONFIRM SEND'}</button>
               </form>
             </motion.div>
           </div>
@@ -604,14 +393,7 @@ const handleTransferFrom = async (e) => {
 
       <AnimatePresence>
         {notification.show && (
-          <motion.div
-            initial={{ y: 100, x: "-50%", opacity: 0 }}
-            animate={{ y: 0, x: "-50%", opacity: 1 }}
-            exit={{ y: 100, x: "-50%", opacity: 0 }}
-            className={`fixed bottom-6 left-1/2 px-6 py-4 rounded-2xl z-[100] font-black text-[10px] uppercase tracking-widest shadow-2xl w-[90%] sm:w-auto text-center ${
-              notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-salvaGold text-black'
-            }`}
-          >
+          <motion.div initial={{ y: 100, x: "-50%", opacity: 0 }} animate={{ y: 0, x: "-50%", opacity: 1 }} exit={{ y: 100, x: "-50%", opacity: 0 }} className={`fixed bottom-6 left-1/2 px-6 py-4 rounded-2xl z-[100] font-black text-[10px] uppercase tracking-widest shadow-2xl w-[90%] sm:w-auto text-center ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-salvaGold text-black'}`}>
             {notification.message}
           </motion.div>
         )}
