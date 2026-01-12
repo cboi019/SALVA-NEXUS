@@ -576,36 +576,41 @@ app.get('/api/debug/approvals', async (req, res) => {
   res.json(all);
 });
 
-const cleanupApprovals = async () => {
-  const approvals = await Approval.find({});
-  
-  for (const app of approvals) {
-    let resolvedSpender = app.spender.toLowerCase();
+app.get('/api/admin/cleanup', async (req, res) => {
+  try {
+    const approvals = await Approval.find({});
+    let mergedCount = 0;
+    
+    for (const app of approvals) {
+      // 1. Resolve current entry to a clean wallet address
+      let resolvedSpender = app.spender.toLowerCase();
+      if (!app.spender.startsWith('0x')) {
+        const user = await User.findOne({ accountNumber: app.spender });
+        if (user) resolvedSpender = user.safeAddress.toLowerCase();
+      }
 
-    // If it's an alias, find the actual address
-    if (!app.spender.startsWith('0x')) {
-      const user = await User.findOne({ accountNumber: app.accountNumber });
-      if (user) resolvedSpender = user.safeAddress.toLowerCase();
+      // 2. Look for duplicates (same owner + resolved spender address)
+      const duplicate = await Approval.findOne({
+        _id: { $ne: app._id },
+        owner: app.owner.toLowerCase(),
+        spender: resolvedSpender
+      });
+
+      if (duplicate) {
+        // Delete the redundant one
+        await Approval.deleteOne({ _id: app._id });
+        mergedCount++;
+      } else if (app.spender !== resolvedSpender) {
+        // If no duplicate but it was using an alias, update it to the address
+        app.spender = resolvedSpender;
+        await app.save();
+      }
     }
-
-    // Check if another record exists for the same owner + resolved address
-    const duplicate = await Approval.findOne({
-      _id: { $ne: app._id }, // Not this current record
-      owner: app.owner.toLowerCase(),
-      spender: resolvedSpender
-    });
-
-    if (duplicate) {
-      console.log(`Merging ${app.spender} into ${resolvedSpender}`);
-      // Keep the one with the higher amount or more recent date, delete the other
-      await Approval.deleteOne({ _id: app._id });
-    } else if (app.spender !== resolvedSpender) {
-      // If no duplicate, but the current record uses an alias, update it to the address
-      app.spender = resolvedSpender;
-      await app.save();
-    }
+    res.json({ success: true, message: `Cleanup complete. Merged ${mergedCount} duplicates.` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-};
+});
 
 // ===============================================
 // GET TRANSACTIONS
