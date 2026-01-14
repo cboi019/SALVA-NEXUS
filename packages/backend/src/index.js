@@ -20,6 +20,9 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const relay = new GelatoRelay();
 
 const app = express();
+// ADD THESE TWO LINES BELOW
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true }));
 app.use(cors({
   origin: [
     'https://salva-nexus.org',
@@ -789,7 +792,29 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+
 const PORT = process.env.PORT || 10000;
+// Global Error Handler - Prevents the app from crashing on unhandled errors
+app.use((err, req, res, next) => {
+  console.error('Final Catch-All Error:', err.stack);
+  res.status(500).json({ 
+    message: 'Internal Server Error', 
+    error: process.env.NODE_ENV === 'production' ? {} : err.message 
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SALVA BACKEND ACTIVE ON PORT ${PORT}`);
 });
+
+// KEEP-ALIVE: Self-ping every 10 minutes to stay awake on Render
+const INTERVAL = 10 * 60 * 1000; // 10 minutes
+const URL = "https://salva-api.onrender.com/api/stats";
+
+function reloadWebsite() {
+  fetch(URL)
+    .then(() => console.log("⚓ Keep-Alive: Side-ping successful"))
+    .catch((err) => console.error("⚓ Keep-Alive Error:", err.message));
+}
+
+setInterval(reloadWebsite, INTERVAL);
