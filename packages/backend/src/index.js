@@ -119,7 +119,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
 
   try {
     const data = await resend.emails.send({
-      from: 'Salva <onboarding@resend.dev>',
+      from: 'Salva <no-reply@salva-nexus.org>',
       to: email,
       subject: "Verify your Salva Account",
       html: `
