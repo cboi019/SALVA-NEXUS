@@ -36,29 +36,6 @@ app.use(cors({
 // Temporary storage for OTPs
 const otpStore = {};
 
-// Nodemailer Setup
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false, 
-  connectionTimeout: 10000,
-  auth: {
-    user: process.env.EMAIL_USER || 'charlieonyii42@gmail.com',
-    pass: process.env.EMAIL_PASS 
-  }, 
-  tls: {
-    rejectUnauthorized: false 
-  }
-});
-
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("❌ Email System Error:", error.message);
-  } else {
-    console.log("📧 Email System: Ready to send OTPs");
-  }
-});
-
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('🍃 MongoDB Connected'))
