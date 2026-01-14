@@ -3,7 +3,6 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') }
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
-const nodemailer = require('nodemailer'); 
 const { ethers } = require('ethers');
 const { wallet, provider } = require('./services/walletSigner');
 const { generateAndDeploySalvaIdentity } = require('./services/userService');
@@ -790,7 +789,7 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 1000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SALVA BACKEND ACTIVE ON PORT ${PORT}`);
 });
