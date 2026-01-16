@@ -1,4 +1,4 @@
-// index.js
+// Salva-Digital-Tech/packages/backend/src/index.js
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const express = require('express');
 const cors = require('cors');

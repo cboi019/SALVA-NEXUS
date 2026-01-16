@@ -1,4 +1,4 @@
-// Login.jsx
+// Salva-Digital-Tech/packages/backend/src/pages/Login.jsx
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -8,13 +8,37 @@ import Stars from '../components/Stars';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const [regStep, setRegStep] = useState(1); // 1: Input, 2: OTP Verification
+  const [regStep, setRegStep] = useState(1);
   const [otp, setOtp] = useState('');
   const [formData, setFormData] = useState({ username: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [notif, setNotif] = useState({ show: false, msg: '', type: '' });
+  const [checkingAuth, setCheckingAuth] = useState(true);
   
   const navigate = useNavigate();
+
+  // CHECK FOR EXISTING SESSION ON COMPONENT MOUNT
+  useEffect(() => {
+    const checkExistingSession = () => {
+      try {
+        const savedUser = localStorage.getItem('salva_user');
+        if (savedUser) {
+          const userData = JSON.parse(savedUser);
+          if (userData.safeAddress && userData.accountNumber && userData.ownerKey) {
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Session check failed:', err);
+        localStorage.removeItem('salva_user');
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    checkExistingSession();
+  }, [navigate]);
 
   useEffect(() => {
     if (notif.show) {
@@ -25,7 +49,6 @@ const Login = () => {
 
   const showMsg = (msg, type = 'success') => setNotif({ show: true, msg, type });
 
-  // Handle Registration Step 1: Send OTP
   const handleStartRegistration = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -49,12 +72,10 @@ const Login = () => {
     }
   };
 
-  // Final Submit (Login or Finalized Registration)
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
     setLoading(true);
 
-    // If we are in registration mode, we verify the OTP first
     if (!isLogin && regStep === 2) {
       try {
         const verifyRes = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
@@ -103,6 +124,14 @@ const Login = () => {
     }
   };
 
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0B]">
+        <div className="text-salvaGold font-black text-2xl animate-pulse">LOADING...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-white dark:bg-[#0A0A0B] transition-colors duration-500">
       <Stars />
@@ -139,61 +168,59 @@ const Login = () => {
         )}
         {isLogin && <div className="mb-8" />}
 
-      <form onSubmit={isLogin ? handleSubmit : (regStep === 1 ? handleStartRegistration : handleSubmit)} className="space-y-4">
-        {isLogin || regStep === 1 ? (
-          <>
-            {!isLogin && (
+        <form onSubmit={isLogin ? handleSubmit : (regStep === 1 ? handleStartRegistration : handleSubmit)} className="space-y-4">
+          {isLogin || regStep === 1 ? (
+            <>
+              {!isLogin && (
+                <input 
+                  type="text" placeholder="Username" value={formData.username} 
+                  onChange={(e) => setFormData({...formData, username: e.target.value})} 
+                  required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
+                />
+              )}
               <input 
-                type="text" placeholder="Username" value={formData.username} 
-                onChange={(e) => setFormData({...formData, username: e.target.value})} 
-                required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
-              />
-            )}
-            <input 
-              type="email" placeholder="Email" value={formData.email} 
-              onChange={(e) => setFormData({...formData, email: e.target.value})} 
-              required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
-            />
-      
-            {/* Container for Password + Forgot Link */}
-            <div className="space-y-2">
-              <input 
-                type="password" placeholder="Password" value={formData.password} 
-                onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                type="email" placeholder="Email" value={formData.email} 
+                onChange={(e) => setFormData({...formData, email: e.target.value})} 
                 required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
               />
         
-              {isLogin && (
-                <div className="flex justify-end px-1">
-                  <Link 
-                    to="/forgot-password" 
-                    className="text-[10px] uppercase text-salvaGold/60 hover:text-salvaGold transition-colors font-bold tracking-widest"
-                  >
-                    Forgot Password?
-                  </Link>
-                </div>
-              )}
+              <div className="space-y-2">
+                <input 
+                  type="password" placeholder="Password" value={formData.password} 
+                  onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                  required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
+                />
+          
+                {isLogin && (
+                  <div className="flex justify-end px-1">
+                    <Link 
+                      to="/forgot-password" 
+                      className="text-[10px] uppercase text-salvaGold/60 hover:text-salvaGold transition-colors font-bold tracking-widest"
+                    >
+                      Forgot Password?
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="py-4">
+              <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block text-center">Enter 6-Digit Code</label>
+              <input 
+                type="text" maxLength="6" placeholder="000000" value={otp} 
+                onChange={(e) => setOtp(e.target.value)} 
+                required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-salvaGold text-center text-3xl tracking-[0.5em] font-black outline-none text-black dark:text-white" 
+              />
             </div>
-          </>
-        ) : (
-          /* ... (The OTP input section remains the same) ... */
-          <div className="py-4">
-            <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block text-center">Enter 6-Digit Code</label>
-            <input 
-              type="text" maxLength="6" placeholder="000000" value={otp} 
-              onChange={(e) => setOtp(e.target.value)} 
-              required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-salvaGold text-center text-3xl tracking-[0.5em] font-black outline-none text-black dark:text-white" 
-            />
-          </div>
-        )}
-  
-        <button 
-          disabled={loading} type="submit" 
-          className="w-full py-5 rounded-2xl bg-salvaGold text-black font-black hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-salvaGold/20 disabled:opacity-50"
-        >
-          {loading ? 'WAITING...' : isLogin ? 'ACCESS WALLET' : (regStep === 1 ? 'SEND VERIFICATION' : 'VERIFY & DEPLOY')}
-        </button>
-      </form>
+          )}
+    
+          <button 
+            disabled={loading} type="submit" 
+            className="w-full py-5 rounded-2xl bg-salvaGold text-black font-black hover:brightness-110 active:scale-95 transition-all shadow-lg shadow-salvaGold/20 disabled:opacity-50"
+          >
+            {loading ? 'WAITING...' : isLogin ? 'ACCESS WALLET' : (regStep === 1 ? 'SEND VERIFICATION' : 'VERIFY & DEPLOY')}
+          </button>
+        </form>
 
         <div className="mt-6 flex flex-col items-center gap-4">
           <button 
