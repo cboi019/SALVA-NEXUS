@@ -1,7 +1,8 @@
-// Home.jsx
+// Salva-Digital-Tech/packages/frontend/src/pages/Home.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, animate } from 'framer-motion';
 import { Instagram, Github } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Stars from '../components/Stars';
 
 // Custom X (formerly Twitter) Logo Component
@@ -62,6 +63,32 @@ const CountUp = ({ to, decimals = 0 }) => {
 const Home = () => {
   const [stats, setStats] = useState({ totalMinted: 0, userCount: 0 });
   const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  
+  const navigate = useNavigate();
+
+  // CHECK FOR EXISTING SESSION ON COMPONENT MOUNT - Redirect authenticated users to dashboard
+  useEffect(() => {
+    const checkExistingSession = () => {
+      try {
+        const savedUser = localStorage.getItem('salva_user');
+        if (savedUser) {
+          const userData = JSON.parse(savedUser);
+          if (userData.safeAddress && userData.accountNumber && userData.ownerKey) {
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Session check failed:', err);
+        localStorage.removeItem('salva_user');
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+
+    checkExistingSession();
+  }, [navigate]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -97,6 +124,15 @@ const Home = () => {
     viewport: { once: true },
     transition: { duration: 0.8 }
   };
+
+  // Show loading screen while checking authentication
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0B]">
+        <div className="text-salvaGold font-black text-2xl animate-pulse">LOADING...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white transition-colors duration-500 overflow-x-hidden">

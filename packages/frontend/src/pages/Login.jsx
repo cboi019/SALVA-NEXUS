@@ -3,6 +3,7 @@ import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import FloatingCoin from '../components/FloatingCoin';
 import Stars from '../components/Stars';
 
@@ -14,10 +15,11 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [notif, setNotif] = useState({ show: false, msg: '', type: '' });
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   
   const navigate = useNavigate();
 
-  // CHECK FOR EXISTING SESSION ON COMPONENT MOUNT
+  // CHECK FOR EXISTING SESSION ON COMPONENT MOUNT - This is the fix
   useEffect(() => {
     const checkExistingSession = () => {
       try {
@@ -185,11 +187,23 @@ const Login = () => {
               />
         
               <div className="space-y-2">
-                <input 
-                  type="password" placeholder="Password" value={formData.password} 
-                  onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                  required className="w-full p-4 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
-                />
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Password" 
+                    value={formData.password} 
+                    onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                    required 
+                    className="w-full p-4 pr-12 rounded-2xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-black dark:text-white font-bold" 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-salvaGold transition-colors"
+                  >
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
           
                 {isLogin && (
                   <div className="flex justify-end px-1">

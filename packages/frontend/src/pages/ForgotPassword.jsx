@@ -1,7 +1,9 @@
+// Salva-Digital-Tech/packages/frontend/src/pages/ForgotPassword.jsx
 import { API_BASE_URL } from '../config';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import Stars from '../components/Stars';
 
 const ForgotPassword = () => {
@@ -12,6 +14,8 @@ const ForgotPassword = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   
   const navigate = useNavigate();
 
@@ -121,17 +125,41 @@ const ForgotPassword = () => {
             <>
               <div>
                 <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">New Password</label>
-                <input 
-                  required type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full p-4 rounded-2xl bg-white/5 border border-transparent focus:border-salvaGold outline-none font-bold"
-                />
+                <div className="relative">
+                  <input 
+                    required 
+                    type={showNewPassword ? "text" : "password"} 
+                    value={newPassword} 
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full p-4 pr-12 rounded-2xl bg-white/5 border border-transparent focus:border-salvaGold outline-none font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-salvaGold transition-colors"
+                  >
+                    {showNewPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Confirm Password</label>
-                <input 
-                  required type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full p-4 rounded-2xl bg-white/5 border border-transparent focus:border-salvaGold outline-none font-bold"
-                />
+                <div className="relative">
+                  <input 
+                    required 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    value={confirmPassword} 
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full p-4 pr-12 rounded-2xl bg-white/5 border border-transparent focus:border-salvaGold outline-none font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-salvaGold transition-colors"
+                  >
+                    {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  </button>
+                </div>
               </div>
             </>
           )}
