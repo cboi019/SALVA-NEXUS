@@ -384,8 +384,19 @@ app.get('/api/approvals/:address', async (req, res) => {
   }
 });
 
+If senderDisplayIdentifier is still empty/null in the database, then the issue is in the save operation, not the display logic.
+
+Let me know what the debug endpoint shows!
+
+
+
+Want to be notified when Claude responds?
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
 // ===============================================
-// TRANSFER (Fixed Display + 8-Second Delay)
+// TRANSFER (COMPLETELY FIXED)
 // ===============================================
 app.post('/api/transfer', async (req, res) => {
   try {
@@ -396,22 +407,29 @@ app.post('/api/transfer', async (req, res) => {
     const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
     const recipient = await resolveUser(toInput);
     
+    if (!sender) {
+      return res.status(400).json({ message: "Sender not found in database" });
+    }
+    
     const recipientAddress = recipient 
       ? recipient.safeAddress.toLowerCase() 
       : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
     
-    // FIXED: Match the input type - if sender used account number for recipient, 
-    // receiver should see sender's account number. If sender used address, receiver sees address.
+    // FIXED LOGIC: Check what TYPE of input the sender used
     const senderUsedAccountNumber = isAccountNumber(toInput);
-    const senderDisplayIdentifier = senderUsedAccountNumber
-      ? (sender && sender.accountNumber ? sender.accountNumber : safeAddress.toLowerCase())
-      : safeAddress.toLowerCase();
     
-    const recipientDisplayIdentifier = toInput; // What sender inputted (for sender's history)
+    // Store the sender's identifier of the SAME TYPE
+    const senderDisplayIdentifier = senderUsedAccountNumber
+      ? sender.accountNumber  // Sender used account# → store sender's account#
+      : safeAddress.toLowerCase();  // Sender used address → store sender's address
+    
+    const recipientDisplayIdentifier = toInput; // What sender inputted
 
     if (!recipientAddress && isAccountNumber(toInput)) {
       return res.status(404).json({ message: "Recipient account number not found" });
     }
+
+    console.log(`📝 Storing transaction with senderDisplayIdentifier: ${senderDisplayIdentifier}`);
 
     // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("Transfer queued");
@@ -428,7 +446,7 @@ app.post('/api/transfer', async (req, res) => {
       
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: sender ? sender.accountNumber : null,
+        fromAccountNumber: sender.accountNumber,
         toAddress: recipientAddress,
         toAccountNumber: recipientDisplayIdentifier,
         senderDisplayIdentifier: senderDisplayIdentifier,
@@ -449,11 +467,11 @@ app.post('/api/transfer', async (req, res) => {
 
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
     
-    // ONLY SAVE IF SUCCESSFUL - DO NOT SAVE REVERTED TRANSACTIONS
+    // ONLY SAVE IF SUCCESSFUL
     if (taskStatus.success) {
-      await new Transaction({
+      const savedTx = await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: sender ? sender.accountNumber : null,
+        fromAccountNumber: sender.accountNumber,
         toAddress: recipientAddress,
         toAccountNumber: recipientDisplayIdentifier,
         senderDisplayIdentifier: senderDisplayIdentifier,
@@ -463,8 +481,9 @@ app.post('/api/transfer', async (req, res) => {
         type: 'transfer',
         date: new Date()
       }).save();
+      
+      console.log(`✅ Transaction saved with senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
     } else {
-      // Transaction reverted - don't save to history
       return res.status(400).json({ 
         success: false, 
         message: taskStatus.reason || "Transfer reverted on blockchain"
@@ -480,14 +499,21 @@ app.post('/api/transfer', async (req, res) => {
       const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
       const recipient = await resolveUser(req.body.toInput);
       
+      if (!sender) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Sender not found" 
+        });
+      }
+      
       const senderUsedAccountNumber = isAccountNumber(req.body.toInput);
       const senderDisplayIdentifier = senderUsedAccountNumber
-        ? (sender && sender.accountNumber ? sender.accountNumber : req.body.safeAddress.toLowerCase())
+        ? sender.accountNumber
         : req.body.safeAddress.toLowerCase();
       
       await new Transaction({
         fromAddress: req.body.safeAddress.toLowerCase(),
-        fromAccountNumber: sender ? sender.accountNumber : null,
+        fromAccountNumber: sender.accountNumber,
         toAddress: recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(req.body.toInput) ? null : req.body.toInput.toLowerCase()),
         toAccountNumber: req.body.toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
@@ -601,7 +627,7 @@ app.get('/api/transactions/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM (Fixed Display + 8-Second Delay)
+// TRANSFER FROM (COMPLETELY FIXED)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
@@ -610,28 +636,32 @@ app.post('/api/transferFrom', async (req, res) => {
 
     const fromUser = await resolveUser(fromInput);
     const toUser = await resolveUser(toInput);
+    const executor = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
 
     if (!fromUser) {
       return res.status(404).json({ success: false, message: "Source account not found" });
+    }
+    
+    if (!executor) {
+      return res.status(404).json({ success: false, message: "Executor not found" });
     }
 
     const fromAddress = fromUser.safeAddress.toLowerCase();
     const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
     
-    // FIXED: Match input types - respect what the executor inputted
+    // FIXED: Determine what type the executor used for BOTH inputs
     const fromInputWasAccountNumber = isAccountNumber(fromInput);
     const toInputWasAccountNumber = isAccountNumber(toInput);
     
-    // What the source (fromUser) should see in their history
+    // What the source (fromUser) should see - based on fromInput type
     const senderDisplayIdentifier = fromInputWasAccountNumber
-      ? (fromUser && fromUser.accountNumber ? fromUser.accountNumber : fromAddress)
+      ? fromUser.accountNumber
       : fromAddress;
     
-    // What the executor inputted for source
-    const fromDisplayIdentifier = fromInput;
-    
-    // What the executor inputted for destination
+    // What executor inputted for destination
     const toDisplayIdentifier = toInput;
+
+    console.log(`📝 TransferFrom: senderDisplayIdentifier = ${senderDisplayIdentifier}`);
 
     // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("TransferFrom queued");
@@ -652,7 +682,7 @@ app.post('/api/transferFrom', async (req, res) => {
     
     // ONLY SAVE IF SUCCESSFUL
     if (taskStatus.success) {
-      await new Transaction({
+      const savedTx = await new Transaction({
         fromAddress: fromAddress,
         fromAccountNumber: fromInputWasAccountNumber ? fromUser.accountNumber : null,
         toAddress: toAddress,
@@ -665,6 +695,8 @@ app.post('/api/transferFrom', async (req, res) => {
         taskId: result.taskId,
         date: new Date()
       }).save();
+      
+      console.log(`✅ TransferFrom saved with senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
     } else {
       return res.status(400).json({
         success: false, 
