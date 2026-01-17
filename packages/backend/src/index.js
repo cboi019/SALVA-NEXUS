@@ -228,16 +228,10 @@ app.post('/api/register', async (req, res) => {
       wallet
     );
 
-try {
-    // Add this line to "pre-flight" the transaction
-    await registryContract.registerNumber.staticCall(
+    const tx = await registryContract.registerNumber(
       identityData.accountNumber,
       identityData.safeAddress
     );
-} catch (staticError) {
-    console.error("🔍 Detailed Contract Revert Reason:", staticError);
-    // This will usually show the name of the Custom Error (e.g., "AlreadyRegistered")
-}
     
     console.log(`⏳ Registration TX sent: ${tx.hash}`);
     await tx.wait();
