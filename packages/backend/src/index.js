@@ -400,9 +400,14 @@ app.post('/api/transfer', async (req, res) => {
       ? recipient.safeAddress.toLowerCase() 
       : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
     
-    const recipientAccountNumber = recipient 
-      ? recipient.accountNumber 
-      : toInput;
+    // CRITICAL FIX: Store what the SENDER inputted (account number OR address)
+    // This determines what the RECEIVER will see
+    const senderInputType = isAccountNumber(toInput) ? 'accountNumber' : 'address';
+    const senderDisplayIdentifier = senderInputType === 'accountNumber' 
+      ? (sender ? sender.accountNumber : safeAddress.toLowerCase())  // Show sender's account number
+      : safeAddress.toLowerCase();  // Show sender's address
+    
+    const recipientDisplayIdentifier = toInput; // What sender inputted
 
     if (!recipientAddress && isAccountNumber(toInput)) {
       return res.status(404).json({ message: "Recipient account number not found" });
@@ -425,7 +430,8 @@ app.post('/api/transfer', async (req, res) => {
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
-        toAccountNumber: recipientAccountNumber,
+        toAccountNumber: recipientDisplayIdentifier,
+        senderDisplayIdentifier: senderDisplayIdentifier, // NEW: What receiver should see
         amount: amount,
         status: 'failed',
         taskId: null,
@@ -449,7 +455,8 @@ app.post('/api/transfer', async (req, res) => {
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
-        toAccountNumber: recipientAccountNumber,
+        toAccountNumber: recipientDisplayIdentifier,
+        senderDisplayIdentifier: senderDisplayIdentifier, // NEW: What receiver should see
         amount: amount,
         status: 'successful',
         taskId: result.taskId,
@@ -473,11 +480,17 @@ app.post('/api/transfer', async (req, res) => {
       const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
       const recipient = await resolveUser(req.body.toInput);
       
+      const senderInputType = isAccountNumber(req.body.toInput) ? 'accountNumber' : 'address';
+      const senderDisplayIdentifier = senderInputType === 'accountNumber' 
+        ? (sender ? sender.accountNumber : req.body.safeAddress.toLowerCase())
+        : req.body.safeAddress.toLowerCase();
+      
       await new Transaction({
         fromAddress: req.body.safeAddress.toLowerCase(),
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(req.body.toInput) ? null : req.body.toInput.toLowerCase()),
         toAccountNumber: req.body.toInput,
+        senderDisplayIdentifier: senderDisplayIdentifier,
         amount: req.body.amount,
         status: 'failed',
         taskId: null,
@@ -568,9 +581,9 @@ app.get('/api/transactions/:address', async (req, res) => {
     const formatted = transactions.map(tx => {
       const isReceived = tx.toAddress?.toLowerCase() === address;
       
-      // FIXED: Show the OTHER party's identifier
+      // FIXED: Use senderDisplayIdentifier for received transactions
       const displayPartner = isReceived 
-        ? (tx.fromAccountNumber || tx.fromAddress) // Show sender's info
+        ? (tx.senderDisplayIdentifier || tx.fromAccountNumber || tx.fromAddress) // Show what sender used
         : (tx.toAccountNumber || tx.toAddress);    // Show recipient's info
       
       return {
