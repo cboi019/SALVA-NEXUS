@@ -384,17 +384,6 @@ app.get('/api/approvals/:address', async (req, res) => {
   }
 });
 
-If senderDisplayIdentifier is still empty/null in the database, then the issue is in the save operation, not the display logic.
-
-Let me know what the debug endpoint shows!
-
-
-
-Want to be notified when Claude responds?
-
-
-
-Claude is AI and can make mistakes. Please double-check responses.
 // ===============================================
 // TRANSFER (COMPLETELY FIXED)
 // ===============================================
