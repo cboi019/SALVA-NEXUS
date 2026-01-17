@@ -400,14 +400,14 @@ app.post('/api/transfer', async (req, res) => {
       ? recipient.safeAddress.toLowerCase() 
       : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
     
-    // CRITICAL FIX: Store what the SENDER inputted (account number OR address)
-    // This determines what the RECEIVER will see
-    const senderInputType = isAccountNumber(toInput) ? 'accountNumber' : 'address';
-    const senderDisplayIdentifier = senderInputType === 'accountNumber' 
-      ? (sender ? sender.accountNumber : safeAddress.toLowerCase())  // Show sender's account number
-      : safeAddress.toLowerCase();  // Show sender's address
+    // FIXED: Match the input type - if sender used account number for recipient, 
+    // receiver should see sender's account number. If sender used address, receiver sees address.
+    const senderUsedAccountNumber = isAccountNumber(toInput);
+    const senderDisplayIdentifier = senderUsedAccountNumber
+      ? (sender && sender.accountNumber ? sender.accountNumber : safeAddress.toLowerCase())
+      : safeAddress.toLowerCase();
     
-    const recipientDisplayIdentifier = toInput; // What sender inputted
+    const recipientDisplayIdentifier = toInput; // What sender inputted (for sender's history)
 
     if (!recipientAddress && isAccountNumber(toInput)) {
       return res.status(404).json({ message: "Recipient account number not found" });
@@ -431,7 +431,7 @@ app.post('/api/transfer', async (req, res) => {
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
         toAccountNumber: recipientDisplayIdentifier,
-        senderDisplayIdentifier: senderDisplayIdentifier, // NEW: What receiver should see
+        senderDisplayIdentifier: senderDisplayIdentifier,
         amount: amount,
         status: 'failed',
         taskId: null,
@@ -456,7 +456,7 @@ app.post('/api/transfer', async (req, res) => {
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
         toAccountNumber: recipientDisplayIdentifier,
-        senderDisplayIdentifier: senderDisplayIdentifier, // NEW: What receiver should see
+        senderDisplayIdentifier: senderDisplayIdentifier,
         amount: amount,
         status: 'successful',
         taskId: result.taskId,
@@ -480,9 +480,9 @@ app.post('/api/transfer', async (req, res) => {
       const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
       const recipient = await resolveUser(req.body.toInput);
       
-      const senderInputType = isAccountNumber(req.body.toInput) ? 'accountNumber' : 'address';
-      const senderDisplayIdentifier = senderInputType === 'accountNumber' 
-        ? (sender ? sender.accountNumber : req.body.safeAddress.toLowerCase())
+      const senderUsedAccountNumber = isAccountNumber(req.body.toInput);
+      const senderDisplayIdentifier = senderUsedAccountNumber
+        ? (sender && sender.accountNumber ? sender.accountNumber : req.body.safeAddress.toLowerCase())
         : req.body.safeAddress.toLowerCase();
       
       await new Transaction({
@@ -617,7 +617,21 @@ app.post('/api/transferFrom', async (req, res) => {
 
     const fromAddress = fromUser.safeAddress.toLowerCase();
     const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
-    const toAccountAlias = toUser ? toUser.accountNumber : toInput;
+    
+    // FIXED: Match input types - respect what the executor inputted
+    const fromInputWasAccountNumber = isAccountNumber(fromInput);
+    const toInputWasAccountNumber = isAccountNumber(toInput);
+    
+    // What the source (fromUser) should see in their history
+    const senderDisplayIdentifier = fromInputWasAccountNumber
+      ? (fromUser && fromUser.accountNumber ? fromUser.accountNumber : fromAddress)
+      : fromAddress;
+    
+    // What the executor inputted for source
+    const fromDisplayIdentifier = fromInput;
+    
+    // What the executor inputted for destination
+    const toDisplayIdentifier = toInput;
 
     // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("TransferFrom queued");
@@ -640,9 +654,10 @@ app.post('/api/transferFrom', async (req, res) => {
     if (taskStatus.success) {
       await new Transaction({
         fromAddress: fromAddress,
-        fromAccountNumber: fromUser.accountNumber,
+        fromAccountNumber: fromInputWasAccountNumber ? fromUser.accountNumber : null,
         toAddress: toAddress,
-        toAccountNumber: toAccountAlias,
+        toAccountNumber: toDisplayIdentifier,
+        senderDisplayIdentifier: senderDisplayIdentifier,
         executorAddress: safeAddress.toLowerCase(),
         amount: amount,
         status: 'successful', 
