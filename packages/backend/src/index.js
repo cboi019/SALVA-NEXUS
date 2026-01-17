@@ -385,40 +385,51 @@ app.get('/api/approvals/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER (COMPLETELY FIXED)
+// TRANSFER (Using Registry Contract)
 // ===============================================
+const { 
+  isAccountNumber, 
+  getAccountNumberFromAddress, 
+  resolveToAddress 
+} = require('./services/registryResolver');
+
 app.post('/api/transfer', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Resolve sender and recipient
+    // Get sender from database for validation
     const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-    const recipient = await resolveUser(toInput);
-    
     if (!sender) {
       return res.status(400).json({ message: "Sender not found in database" });
     }
-    
-    const recipientAddress = recipient 
-      ? recipient.safeAddress.toLowerCase() 
-      : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
-    
-    // FIXED LOGIC: Check what TYPE of input the sender used
-    const senderUsedAccountNumber = isAccountNumber(toInput);
-    
-    // Store the sender's identifier of the SAME TYPE
-    const senderDisplayIdentifier = senderUsedAccountNumber
-      ? sender.accountNumber  // Sender used account# → store sender's account#
-      : safeAddress.toLowerCase();  // Sender used address → store sender's address
-    
-    const recipientDisplayIdentifier = toInput; // What sender inputted
 
-    if (!recipientAddress && isAccountNumber(toInput)) {
-      return res.status(404).json({ message: "Recipient account number not found" });
+    // Resolve recipient address using Registry
+    let recipientAddress;
+    try {
+      recipientAddress = await resolveToAddress(toInput);
+    } catch (error) {
+      return res.status(404).json({ message: error.message });
     }
 
-    console.log(`📝 Storing transaction with senderDisplayIdentifier: ${senderDisplayIdentifier}`);
+    // Determine what type the sender used
+    const senderUsedAccountNumber = isAccountNumber(toInput);
+    
+    // Get sender's identifier of the SAME TYPE using Registry
+    let senderDisplayIdentifier;
+    if (senderUsedAccountNumber) {
+      // Sender used account number, so store sender's account number
+      senderDisplayIdentifier = sender.accountNumber;
+    } else {
+      // Sender used address, so store sender's address
+      senderDisplayIdentifier = safeAddress.toLowerCase();
+    }
+
+    console.log(`📝 Transfer Details:`);
+    console.log(`   Sender used: ${senderUsedAccountNumber ? 'Account Number' : 'Address'}`);
+    console.log(`   Sender identifier to store: ${senderDisplayIdentifier}`);
+    console.log(`   Recipient input: ${toInput}`);
+    console.log(`   Recipient address: ${recipientAddress}`);
 
     // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("Transfer queued");
@@ -437,7 +448,7 @@ app.post('/api/transfer', async (req, res) => {
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: sender.accountNumber,
         toAddress: recipientAddress,
-        toAccountNumber: recipientDisplayIdentifier,
+        toAccountNumber: toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
         amount: amount,
         status: 'failed',
@@ -462,7 +473,7 @@ app.post('/api/transfer', async (req, res) => {
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: sender.accountNumber,
         toAddress: recipientAddress,
-        toAccountNumber: recipientDisplayIdentifier,
+        toAccountNumber: toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
         amount: amount,
         status: 'successful',
@@ -471,7 +482,12 @@ app.post('/api/transfer', async (req, res) => {
         date: new Date()
       }).save();
       
-      console.log(`✅ Transaction saved with senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
+      console.log(`✅ Transaction saved:`);
+      console.log(`   fromAddress: ${savedTx.fromAddress}`);
+      console.log(`   fromAccountNumber: ${savedTx.fromAccountNumber}`);
+      console.log(`   toAddress: ${savedTx.toAddress}`);
+      console.log(`   toAccountNumber: ${savedTx.toAccountNumber}`);
+      console.log(`   senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
     } else {
       return res.status(400).json({ 
         success: false, 
@@ -486,7 +502,6 @@ app.post('/api/transfer', async (req, res) => {
     
     try {
       const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
-      const recipient = await resolveUser(req.body.toInput);
       
       if (!sender) {
         return res.status(400).json({ 
@@ -500,10 +515,17 @@ app.post('/api/transfer', async (req, res) => {
         ? sender.accountNumber
         : req.body.safeAddress.toLowerCase();
       
+      let recipientAddress = null;
+      try {
+        recipientAddress = await resolveToAddress(req.body.toInput);
+      } catch (e) {
+        // If resolution fails, still save the failed transaction
+      }
+      
       await new Transaction({
         fromAddress: req.body.safeAddress.toLowerCase(),
         fromAccountNumber: sender.accountNumber,
-        toAddress: recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(req.body.toInput) ? null : req.body.toInput.toLowerCase()),
+        toAddress: recipientAddress,
         toAccountNumber: req.body.toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
         amount: req.body.amount,
@@ -616,41 +638,53 @@ app.get('/api/transactions/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM (COMPLETELY FIXED)
+// TRANSFER FROM (Using Registry Contract)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    const fromUser = await resolveUser(fromInput);
-    const toUser = await resolveUser(toInput);
+    // Get executor from database
     const executor = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-
-    if (!fromUser) {
-      return res.status(404).json({ success: false, message: "Source account not found" });
-    }
-    
     if (!executor) {
       return res.status(404).json({ success: false, message: "Executor not found" });
     }
 
-    const fromAddress = fromUser.safeAddress.toLowerCase();
-    const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
-    
-    // FIXED: Determine what type the executor used for BOTH inputs
-    const fromInputWasAccountNumber = isAccountNumber(fromInput);
-    const toInputWasAccountNumber = isAccountNumber(toInput);
-    
-    // What the source (fromUser) should see - based on fromInput type
-    const senderDisplayIdentifier = fromInputWasAccountNumber
-      ? fromUser.accountNumber
-      : fromAddress;
-    
-    // What executor inputted for destination
-    const toDisplayIdentifier = toInput;
+    // Resolve FROM address using Registry
+    let fromAddress;
+    try {
+      fromAddress = await resolveToAddress(fromInput);
+    } catch (error) {
+      return res.status(404).json({ success: false, message: `Source: ${error.message}` });
+    }
 
-    console.log(`📝 TransferFrom: senderDisplayIdentifier = ${senderDisplayIdentifier}`);
+    // Resolve TO address using Registry
+    let toAddress;
+    try {
+      toAddress = await resolveToAddress(toInput);
+    } catch (error) {
+      return res.status(404).json({ success: false, message: `Destination: ${error.message}` });
+    }
+
+    // Determine what type executor used for FROM input
+    const fromInputWasAccountNumber = isAccountNumber(fromInput);
+    
+    // Get the source account's identifier of the SAME TYPE
+    let senderDisplayIdentifier;
+    if (fromInputWasAccountNumber) {
+      // Executor used account number for FROM, so store that account number
+      senderDisplayIdentifier = fromInput;
+    } else {
+      // Executor used address for FROM, so store that address
+      senderDisplayIdentifier = fromAddress;
+    }
+
+    console.log(`📝 TransferFrom Details:`);
+    console.log(`   Executor used for FROM: ${fromInputWasAccountNumber ? 'Account Number' : 'Address'}`);
+    console.log(`   Sender identifier to store: ${senderDisplayIdentifier}`);
+    console.log(`   From input: ${fromInput} → ${fromAddress}`);
+    console.log(`   To input: ${toInput} → ${toAddress}`);
 
     // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("TransferFrom queued");
@@ -671,11 +705,17 @@ app.post('/api/transferFrom', async (req, res) => {
     
     // ONLY SAVE IF SUCCESSFUL
     if (taskStatus.success) {
+      // Get FROM account number if executor used account number
+      let fromAccountNumber = null;
+      if (fromInputWasAccountNumber) {
+        fromAccountNumber = fromInput;
+      }
+
       const savedTx = await new Transaction({
         fromAddress: fromAddress,
-        fromAccountNumber: fromInputWasAccountNumber ? fromUser.accountNumber : null,
+        fromAccountNumber: fromAccountNumber,
         toAddress: toAddress,
-        toAccountNumber: toDisplayIdentifier,
+        toAccountNumber: toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
         executorAddress: safeAddress.toLowerCase(),
         amount: amount,
@@ -685,7 +725,12 @@ app.post('/api/transferFrom', async (req, res) => {
         date: new Date()
       }).save();
       
-      console.log(`✅ TransferFrom saved with senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
+      console.log(`✅ TransferFrom saved:`);
+      console.log(`   fromAddress: ${savedTx.fromAddress}`);
+      console.log(`   fromAccountNumber: ${savedTx.fromAccountNumber}`);
+      console.log(`   toAddress: ${savedTx.toAddress}`);
+      console.log(`   toAccountNumber: ${savedTx.toAccountNumber}`);
+      console.log(`   senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
     } else {
       return res.status(400).json({
         success: false, 
