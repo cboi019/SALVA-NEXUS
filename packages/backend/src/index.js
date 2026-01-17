@@ -386,6 +386,9 @@ const {
   resolveToAddress 
 } = require('./services/registryResolver');
 
+// ===============================================
+// TRANSFER (FIXED - Save failed transactions)
+// ===============================================
 app.post('/api/transfer', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
@@ -407,11 +410,9 @@ app.post('/api/transfer', async (req, res) => {
     let senderAccountNumber = null;
     
     if (senderUsedAccountNumber) {
-      // Sender used account number for recipient, so get sender's account number from Registry
       senderAccountNumber = await getAccountNumberFromAddress(safeAddress);
       senderDisplayIdentifier = senderAccountNumber || safeAddress.toLowerCase();
     } else {
-      // Sender used address for recipient, so use sender's address
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
@@ -435,6 +436,7 @@ app.post('/api/transfer', async (req, res) => {
     if (!result || !result.taskId) {
       console.error("❌ Transfer failed: No taskId returned");
       
+      // FIXED: Save failed transaction
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: senderAccountNumber,
@@ -458,9 +460,9 @@ app.post('/api/transfer', async (req, res) => {
 
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
     
-    // ONLY SAVE IF SUCCESSFUL
+    // Save based on status (successful or failed)
     if (taskStatus.success) {
-      const savedTx = await new Transaction({
+      await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: senderAccountNumber,
         toAddress: recipientAddress,
@@ -473,13 +475,24 @@ app.post('/api/transfer', async (req, res) => {
         date: new Date()
       }).save();
       
-      console.log(`✅ Transaction saved:`);
-      console.log(`   fromAddress: ${savedTx.fromAddress}`);
-      console.log(`   fromAccountNumber: ${savedTx.fromAccountNumber}`);
-      console.log(`   toAddress: ${savedTx.toAddress}`);
-      console.log(`   toAccountNumber: ${savedTx.toAccountNumber}`);
-      console.log(`   senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
+      console.log(`✅ Transaction saved as SUCCESSFUL`);
     } else {
+      // FIXED: Save as failed instead of not saving at all
+      await new Transaction({
+        fromAddress: safeAddress.toLowerCase(),
+        fromAccountNumber: senderAccountNumber,
+        toAddress: recipientAddress,
+        toAccountNumber: toInput,
+        senderDisplayIdentifier: senderDisplayIdentifier,
+        amount: amount,
+        status: 'failed',
+        taskId: result.taskId,
+        type: 'transfer',
+        date: new Date()
+      }).save();
+      
+      console.log(`❌ Transaction saved as FAILED`);
+      
       return res.status(400).json({ 
         success: false, 
         message: taskStatus.reason || "Transfer reverted on blockchain"
@@ -507,9 +520,10 @@ app.post('/api/transfer', async (req, res) => {
       try {
         recipientAddress = await resolveToAddress(req.body.toInput);
       } catch (e) {
-        // If resolution fails, still save the failed transaction
+        // Resolution failed
       }
       
+      // FIXED: Save failed transaction
       await new Transaction({
         fromAddress: req.body.safeAddress.toLowerCase(),
         fromAccountNumber: senderAccountNumber,
@@ -588,32 +602,32 @@ app.post('/api/approve', async (req, res) => {
 });
 
 // ===============================================
-// GET TRANSACTIONS (Fixed Display Logic)
+// GET TRANSACTIONS (FIXED - Show ALL transactions including failed)
 // ===============================================
 app.get('/api/transactions/:address', async (req, res) => {
   try {
     const address = req.params.address.toLowerCase();
 
-    // Only show successful transactions
+    // FIXED: Show ALL transactions (successful AND failed), but only from sender's perspective
     const transactions = await Transaction.find({
       $or: [
-        { fromAddress: address }, 
-        { toAddress: address }
-      ],
-      status: 'successful' // ONLY SUCCESSFUL TRANSACTIONS
+        { fromAddress: address }, // Sent transactions (successful or failed)
+        { toAddress: address, status: 'successful' } // Only successful received transactions
+      ]
     }).sort({ date: -1 }).limit(50);
 
     const formatted = transactions.map(tx => {
-      const isReceived = tx.toAddress?.toLowerCase() === address;
+      const isReceived = tx.toAddress?.toLowerCase() === address && tx.status === 'successful';
+      const isFailed = tx.status === 'failed';
       
-      // FIXED: Use senderDisplayIdentifier for received transactions
+      // Display logic
       const displayPartner = isReceived 
         ? (tx.senderDisplayIdentifier || tx.fromAccountNumber || tx.fromAddress) // Show what sender used
         : (tx.toAccountNumber || tx.toAddress);    // Show recipient's info
       
       return {
         ...tx._doc,
-        displayType: isReceived ? 'receive' : 'sent',
+        displayType: isFailed ? 'failed' : (isReceived ? 'receive' : 'sent'),
         displayPartner: displayPartner
       };
     });
@@ -627,6 +641,9 @@ app.get('/api/transactions/:address', async (req, res) => {
 
 // ===============================================
 // TRANSFER FROM (Using Registry Contract ONLY)
+// ===============================================
+// ===============================================
+// TRANSFER FROM (FIXED - Save failed transactions)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
@@ -655,10 +672,8 @@ app.post('/api/transferFrom', async (req, res) => {
     // Get the source account's identifier of the SAME TYPE
     let senderDisplayIdentifier;
     if (fromInputWasAccountNumber) {
-      // Executor used account number for FROM, so store that account number
       senderDisplayIdentifier = fromInput;
     } else {
-      // Executor used address for FROM, so store that address
       senderDisplayIdentifier = fromAddress;
     }
 
@@ -681,14 +696,29 @@ app.post('/api/transferFrom', async (req, res) => {
     );
 
     if (!result || !result.taskId) {
+      // FIXED: Save failed transaction
+      await new Transaction({
+        fromAddress: fromAddress,
+        fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
+        toAddress: toAddress,
+        toAccountNumber: toInput,
+        senderDisplayIdentifier: senderDisplayIdentifier,
+        executorAddress: safeAddress.toLowerCase(),
+        amount: amount,
+        status: 'failed',
+        taskId: null,
+        type: 'transferFrom',
+        date: new Date()
+      }).save();
+      
       return res.status(400).json({ success: false, message: "Transfer failed to submit" });
     }
 
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
     
-    // ONLY SAVE IF SUCCESSFUL
+    // Save based on status
     if (taskStatus.success) {
-      const savedTx = await new Transaction({
+      await new Transaction({
         fromAddress: fromAddress,
         fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
         toAddress: toAddress,
@@ -702,13 +732,25 @@ app.post('/api/transferFrom', async (req, res) => {
         date: new Date()
       }).save();
       
-      console.log(`✅ TransferFrom saved:`);
-      console.log(`   fromAddress: ${savedTx.fromAddress}`);
-      console.log(`   fromAccountNumber: ${savedTx.fromAccountNumber}`);
-      console.log(`   toAddress: ${savedTx.toAddress}`);
-      console.log(`   toAccountNumber: ${savedTx.toAccountNumber}`);
-      console.log(`   senderDisplayIdentifier: ${savedTx.senderDisplayIdentifier}`);
+      console.log(`✅ TransferFrom saved as SUCCESSFUL`);
     } else {
+      // FIXED: Save as failed
+      await new Transaction({
+        fromAddress: fromAddress,
+        fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
+        toAddress: toAddress,
+        toAccountNumber: toInput,
+        senderDisplayIdentifier: senderDisplayIdentifier,
+        executorAddress: safeAddress.toLowerCase(),
+        amount: amount,
+        status: 'failed',
+        taskId: result.taskId,
+        type: 'transferFrom',
+        date: new Date()
+      }).save();
+      
+      console.log(`❌ TransferFrom saved as FAILED`);
+      
       return res.status(400).json({
         success: false, 
         message: taskStatus.reason || "Transfer reverted: Check allowance or balance"
@@ -719,6 +761,38 @@ app.post('/api/transferFrom', async (req, res) => {
 
   } catch (error) {
     console.error("❌ TransferFrom failed:", error.message);
+    
+    try {
+      // FIXED: Save failed transaction on exception
+      const fromInputWasAccountNumber = isAccountNumber(req.body.fromInput);
+      let fromAddress, toAddress;
+      
+      try {
+        fromAddress = await resolveToAddress(req.body.fromInput);
+        toAddress = await resolveToAddress(req.body.toInput);
+      } catch (e) {
+        // Resolution failed
+      }
+      
+      const senderDisplayIdentifier = fromInputWasAccountNumber ? req.body.fromInput : fromAddress;
+      
+      await new Transaction({
+        fromAddress: fromAddress,
+        fromAccountNumber: fromInputWasAccountNumber ? req.body.fromInput : null,
+        toAddress: toAddress,
+        toAccountNumber: req.body.toInput,
+        senderDisplayIdentifier: senderDisplayIdentifier,
+        executorAddress: req.body.safeAddress.toLowerCase(),
+        amount: req.body.amount,
+        status: 'failed',
+        taskId: null,
+        type: 'transferFrom',
+        date: new Date()
+      }).save();
+    } catch (dbError) {
+      console.error("Failed to save failed transaction:", dbError);
+    }
+    
     res.status(400).json({ success: false, message: "Transfer failed", error: error.message });
   }
 });

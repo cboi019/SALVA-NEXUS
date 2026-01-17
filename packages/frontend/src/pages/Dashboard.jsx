@@ -104,46 +104,79 @@ const Dashboard = () => {
 
   const formatNumber = (num) => parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const downloadReceipt = (e, tx) => {
-    e.stopPropagation();
-    const doc = new jsPDF();
-    const gold = [212, 175, 55];
-    const dark = [10, 10, 11];
-    doc.setFillColor(dark[0], dark[1], dark[2]);
-    doc.rect(0, 0, 210, 297, 'F');
-    doc.setDrawColor(gold[0], gold[1], gold[2]);
-    doc.setLineWidth(1);
-    doc.rect(10, 10, 190, 277);
-    doc.setTextColor(gold[0], gold[1], gold[2]);
-    doc.setFontSize(40);
-    doc.setFont("helvetica", "bold");
-    doc.text("SALVA", 105, 45, { align: "center" });
-    doc.setFontSize(10);
-    doc.setTextColor(255, 255, 255);
-    doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
-    doc.setDrawColor(255, 255, 255, 0.1);
-    doc.line(30, 65, 180, 65);
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("AMOUNT TRANSFERRED", 40, 90);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("DATE", 40, 125);
-    doc.setTextColor(255, 255, 255);
-    doc.text(new Date(tx.date).toLocaleString(), 40, 135);
-    doc.setTextColor(150, 150, 150);
-    doc.text("BLOCKCHAIN STATUS", 40, 155);
-    doc.setTextColor(gold[0], gold[1], gold[2]);
-    doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 165);
-    doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`REFERENCE: ${tx._id || 'SALVA-STABLE-TX'}`, 105, 270, { align: "center" });
-    doc.save(`Salva_Receipt_${Date.now()}.pdf`);
-    showMsg("Professional receipt downloaded!");
-  };
+// FIXED: Receipt generation with sender/receiver details
+const downloadReceipt = (e, tx) => {
+  e.stopPropagation();
+  const doc = new jsPDF();
+  const gold = [212, 175, 55];
+  const dark = [10, 10, 11];
+  const isReceived = tx.displayType === 'receive';
+  
+  doc.setFillColor(dark[0], dark[1], dark[2]);
+  doc.rect(0, 0, 210, 297, 'F');
+  doc.setDrawColor(gold[0], gold[1], gold[2]);
+  doc.setLineWidth(1);
+  doc.rect(10, 10, 190, 277);
+  doc.setTextColor(gold[0], gold[1], gold[2]);
+  doc.setFontSize(40);
+  doc.setFont("helvetica", "bold");
+  doc.text("SALVA", 105, 45, { align: "center" });
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
+  doc.setDrawColor(255, 255, 255, 0.1);
+  doc.line(30, 65, 180, 65);
+  
+  // AMOUNT
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("AMOUNT TRANSFERRED", 40, 90);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
+  
+  // SENDER (FROM)
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("FROM (SENDER)", 40, 125);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  const senderInfo = isReceived ? tx.displayPartner : (user.accountNumber || user.safeAddress);
+  doc.text(senderInfo, 40, 135);
+  
+  // RECIPIENT (TO)
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("TO (RECIPIENT)", 40, 155);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  const recipientInfo = isReceived ? (user.accountNumber || user.safeAddress) : tx.displayPartner;
+  doc.text(recipientInfo, 40, 165);
+  
+  // DATE & TIME
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("DATE & TIME", 40, 185);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.text(new Date(tx.date).toLocaleString(), 40, 195);
+  
+  // STATUS
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("BLOCKCHAIN STATUS", 40, 215);
+  doc.setTextColor(gold[0], gold[1], gold[2]);
+  doc.setFontSize(14);
+  doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 227);
+  
+  // REFERENCE
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`REF: ${tx._id || 'SALVA-TX'}`, 105, 270, { align: "center" });
+  
+  doc.save(`Salva_Receipt_${Date.now()}.pdf`);
+  showMsg("Professional receipt downloaded!");
+};
 
   const handleTransfer = async (e) => {
     e.preventDefault();
