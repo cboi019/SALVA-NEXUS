@@ -1,4 +1,4 @@
-// userService.js - FIXED: Blueprint config + Node sync retry logic
+// Salva-Digital-Tech/packages/backend/src/services/userService.js
 const { ethers } = require('ethers');
 const Safe = require('@safe-global/protocol-kit').default;
 const { wallet, provider } = require('./walletSigner');

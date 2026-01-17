@@ -1,4 +1,4 @@
-// Approval.js
+// Salva-Digital-Tech/Packages/backend/src/models/Approval.js
 const mongoose = require('mongoose');
 
 const ApprovalSchema = new mongoose.Schema({

@@ -1,4 +1,4 @@
-// Transaction.js
+// Salva-Digital-Tech/packages/backend/src/models/Transaction.js
 const mongoose = require('mongoose');
 
 const TransactionSchema = new mongoose.Schema({

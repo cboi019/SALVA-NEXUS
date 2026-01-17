@@ -14,13 +14,11 @@ const { Resend } = require('resend');
 const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
 const Approval = require('./models/Approval');
 
-
 // Initialize Resend and Gelato
 const resend = new Resend(process.env.RESEND_API_KEY);
 const relay = new GelatoRelay();
 
 const app = express();
-// ADD THESE TWO LINES BELOW
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
@@ -29,7 +27,7 @@ app.use(cors({
     'https://www.salva-nexus.org',
     'https://salva-nexus.onrender.com', 
     'http://localhost:3000',
-    'http://localhost:5173' // Added Vite default port too
+    'http://localhost:5173'
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
@@ -44,6 +42,15 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.error('❌ MongoDB Connection Failed:', err));
 
 // ===============================================
+// HELPER: 8-Second Delay Before Blockchain Calls
+// ===============================================
+async function delayBeforeBlockchain(message = "Preparing transaction...") {
+  console.log(`⏳ ${message} (8-second safety delay)`);
+  await new Promise(resolve => setTimeout(resolve, 8000));
+  console.log(`✅ Delay complete, executing blockchain call...`);
+}
+
+// ===============================================
 // HELPER: Check Gelato Task Status (REVERT DETECTION)
 // ===============================================
 async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
@@ -54,13 +61,11 @@ async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
       const status = await relay.getTaskStatus(taskId);
       console.log(`📊 Task ${taskId} status:`, status.taskState);
 
-      // SUCCESS STATES
       if (status.taskState === 'ExecSuccess') {
         console.log(`✅ Task ${taskId} SUCCEEDED on-chain`);
         return { success: true, status: 'successful' };
       }
 
-      // FAILURE STATES
       if (status.taskState === 'ExecReverted') {
         console.error(`❌ Task ${taskId} REVERTED on-chain`);
         return { success: false, status: 'failed', reason: 'Transaction reverted on blockchain' };
@@ -76,21 +81,18 @@ async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
         return { success: false, status: 'failed', reason: 'Transaction blacklisted' };
       }
 
-      // PENDING STATES - keep polling
       if (['CheckPending', 'ExecPending', 'WaitingForConfirmation'].includes(status.taskState)) {
         console.log(`⏳ Task ${taskId} still pending... (attempt ${i + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }
 
-      // UNKNOWN STATE
       console.warn(`⚠️ Unknown task state: ${status.taskState}`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
 
     } catch (error) {
       console.error(`❌ Error checking task status (attempt ${i + 1}):`, error.message);
       
-      // If we can't check status after max retries, assume failure
       if (i === maxRetries - 1) {
         return { success: false, status: 'failed', reason: 'Could not verify transaction status' };
       }
@@ -99,7 +101,6 @@ async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
     }
   }
 
-  // TIMEOUT
   console.error(`⏰ Task ${taskId} timed out after ${maxRetries} attempts`);
   return { success: false, status: 'failed', reason: 'Transaction verification timeout' };
 }
@@ -108,7 +109,6 @@ async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
 // AUTH & EMAIL ROUTES
 // ===============================================
 
-// 1. SEND OTP
 app.post('/api/auth/send-otp', async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ message: "Email required" });
@@ -146,7 +146,6 @@ app.post('/api/auth/send-otp', async (req, res) => {
   }
 });
 
-// 2. VERIFY OTP
 app.post('/api/auth/verify-otp', (req, res) => {
   const { email, code } = req.body;
   const record = otpStore[email];
@@ -159,7 +158,6 @@ app.post('/api/auth/verify-otp', (req, res) => {
   res.json({ success: true });
 });
 
-// 3. RESET PASSWORD
 app.post('/api/auth/reset-password', async (req, res) => {
   const { email, newPassword } = req.body;
   if (!otpStore[email] || !otpStore[email].verified) {
@@ -339,7 +337,6 @@ app.get('/api/approvals/:address', async (req, res) => {
         let spenderAddress = app.spender;
         let spenderDisplay = app.spender;
 
-        // 1. Resolve Spender to Address for the blockchain check
         const spenderUser = await User.findOne({ 
           $or: [
             { accountNumber: app.spender },
@@ -349,20 +346,17 @@ app.get('/api/approvals/:address', async (req, res) => {
 
         if (spenderUser) {
           spenderAddress = spenderUser.safeAddress;
-          spenderDisplay = spenderUser.accountNumber; // Keep it as Alias for UI
+          spenderDisplay = spenderUser.accountNumber;
         }
 
-        // 2. CHECK LIVE ON-CHAIN ALLOWANCE
         const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
         const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
-        // 3. DELETE FROM DB IF REVOKED OR USED UP
         if (parseFloat(liveAmount) <= 0) {
           await Approval.deleteOne({ _id: app._id });
           return null; 
         }
 
-        // 4. SYNC DATABASE
         if (liveAmount !== app.amount) {
           await Approval.updateOne(
             { _id: app._id },
@@ -371,10 +365,9 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
-        // Return a clean object for the frontend
         return {
           _id: app._id,
-          spender: spenderDisplay, // This ensures the UI shows the Alias
+          spender: spenderDisplay,
           amount: app.amount,
           date: app.date
         };
@@ -392,21 +385,32 @@ app.get('/api/approvals/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER (Fixed with Revert Detection)
+// TRANSFER (Fixed Display + 8-Second Delay)
 // ===============================================
 app.post('/api/transfer', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
+    // Resolve sender and recipient
+    const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
     const recipient = await resolveUser(toInput);
-    const recipientAddress = recipient ? recipient.safeAddress.toLowerCase() : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
+    
+    const recipientAddress = recipient 
+      ? recipient.safeAddress.toLowerCase() 
+      : (isAccountNumber(toInput) ? null : toInput.toLowerCase());
+    
+    const recipientAccountNumber = recipient 
+      ? recipient.accountNumber 
+      : toInput;
 
     if (!recipientAddress && isAccountNumber(toInput)) {
       return res.status(404).json({ message: "Recipient account number not found" });
     }
 
-    // Execute blockchain transfer
+    // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
+    await delayBeforeBlockchain("Transfer queued");
+
     const result = await sponsorSafeTransfer(
       safeAddress, 
       userPrivateKey, 
@@ -417,13 +421,11 @@ app.post('/api/transfer', async (req, res) => {
     if (!result || !result.taskId) {
       console.error("❌ Transfer failed: No taskId returned");
       
-      const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-      
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: sender ? sender.accountNumber : null,
         toAddress: recipientAddress,
-        toAccountNumber: toInput,
+        toAccountNumber: recipientAccountNumber,
         amount: amount,
         status: 'failed',
         taskId: null,
@@ -439,24 +441,23 @@ app.post('/api/transfer', async (req, res) => {
 
     console.log(`✅ Transfer submitted with taskId: ${result.taskId}`);
 
-    // CRITICAL: Check if transaction actually succeeded on-chain
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
-
-    const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
     
-    await new Transaction({
-      fromAddress: safeAddress.toLowerCase(),
-      fromAccountNumber: sender ? sender.accountNumber : null,
-      toAddress: recipientAddress,
-      toAccountNumber: toInput,
-      amount: amount,
-      status: taskStatus.status, // 'successful' or 'failed'
-      taskId: result.taskId,
-      type: 'transfer',
-      date: new Date()
-    }).save();
-
-    if (!taskStatus.success) {
+    // ONLY SAVE IF SUCCESSFUL - DO NOT SAVE REVERTED TRANSACTIONS
+    if (taskStatus.success) {
+      await new Transaction({
+        fromAddress: safeAddress.toLowerCase(),
+        fromAccountNumber: sender ? sender.accountNumber : null,
+        toAddress: recipientAddress,
+        toAccountNumber: recipientAccountNumber,
+        amount: amount,
+        status: 'successful',
+        taskId: result.taskId,
+        type: 'transfer',
+        date: new Date()
+      }).save();
+    } else {
+      // Transaction reverted - don't save to history
       return res.status(400).json({ 
         success: false, 
         message: taskStatus.reason || "Transfer reverted on blockchain"
@@ -496,13 +497,12 @@ app.post('/api/transfer', async (req, res) => {
 });
 
 // ===============================================
-// APPROVE (Fixed with Revert Detection)
+// APPROVE (Fixed Display + 8-Second Delay)
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
     
-    // 1. RESOLVE INPUT: Find the user regardless of if input is Alias or Address
     const spenderUser = await User.findOne({ 
       $or: [
         { accountNumber: spenderInput },
@@ -510,15 +510,14 @@ app.post('/api/approve', async (req, res) => {
       ]
     });
 
-    // Use resolved address for blockchain and DB key
     const finalSpenderAddress = spenderUser ? spenderUser.safeAddress.toLowerCase() : spenderInput.toLowerCase();
-    
-    // Use Account Number for display if found, otherwise use the raw input
     const finalDisplaySpender = spenderUser ? spenderUser.accountNumber : spenderInput;
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
     
-    // Use the final resolved address for the blockchain call
+    // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
+    await delayBeforeBlockchain("Approval queued");
+
     const result = await sponsorSafeApprove(safeAddress, userPrivateKey, finalSpenderAddress, amountWei);
 
     if (!result || !result.taskId) {
@@ -530,16 +529,15 @@ app.post('/api/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
-    // 2. UPSERT: This now strictly uses the Safe Address as the unique key
     await Approval.findOneAndUpdate(
       { 
         owner: safeAddress.toLowerCase(), 
-        spender: finalSpenderAddress // Always the 0x address
+        spender: finalSpenderAddress
       },
       { 
         amount: amount, 
         date: new Date(),
-        displaySpender: finalDisplaySpender // Always the Alias (if it exists)
+        displaySpender: finalDisplaySpender
       },
       { upsert: true, new: true }
     );
@@ -548,6 +546,187 @@ app.post('/api/approve', async (req, res) => {
   } catch (error) {
     console.error("Approval Error:", error);
     res.status(500).json({ message: "Approval failed", error: error.message });
+  }
+});
+
+// ===============================================
+// GET TRANSACTIONS (Fixed Display Logic)
+// ===============================================
+app.get('/api/transactions/:address', async (req, res) => {
+  try {
+    const address = req.params.address.toLowerCase();
+
+    // Only show successful transactions
+    const transactions = await Transaction.find({
+      $or: [
+        { fromAddress: address }, 
+        { toAddress: address }
+      ],
+      status: 'successful' // ONLY SUCCESSFUL TRANSACTIONS
+    }).sort({ date: -1 }).limit(50);
+
+    const formatted = transactions.map(tx => {
+      const isReceived = tx.toAddress?.toLowerCase() === address;
+      
+      // FIXED: Show the OTHER party's identifier
+      const displayPartner = isReceived 
+        ? (tx.fromAccountNumber || tx.fromAddress) // Show sender's info
+        : (tx.toAccountNumber || tx.toAddress);    // Show recipient's info
+      
+      return {
+        ...tx._doc,
+        displayType: isReceived ? 'receive' : 'sent',
+        displayPartner: displayPartner
+      };
+    });
+
+    res.json(formatted);
+  } catch (error) {
+    console.error("❌ History Fetch Error:", error);
+    res.status(500).json([]);
+  }
+});
+
+// ===============================================
+// TRANSFER FROM (Fixed Display + 8-Second Delay)
+// ===============================================
+app.post('/api/transferFrom', async (req, res) => {
+  try {
+    const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
+    const amountWei = ethers.parseUnits(amount.toString(), 6);
+
+    const fromUser = await resolveUser(fromInput);
+    const toUser = await resolveUser(toInput);
+
+    if (!fromUser) {
+      return res.status(404).json({ success: false, message: "Source account not found" });
+    }
+
+    const fromAddress = fromUser.safeAddress.toLowerCase();
+    const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
+    const toAccountAlias = toUser ? toUser.accountNumber : toInput;
+
+    // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
+    await delayBeforeBlockchain("TransferFrom queued");
+
+    const result = await sponsorSafeTransferFrom(
+      userPrivateKey,
+      safeAddress,
+      fromAddress,
+      toAddress,
+      amountWei
+    );
+
+    if (!result || !result.taskId) {
+      return res.status(400).json({ success: false, message: "Transfer failed to submit" });
+    }
+
+    const taskStatus = await checkGelatoTaskStatus(result.taskId);
+    
+    // ONLY SAVE IF SUCCESSFUL
+    if (taskStatus.success) {
+      await new Transaction({
+        fromAddress: fromAddress,
+        fromAccountNumber: fromUser.accountNumber,
+        toAddress: toAddress,
+        toAccountNumber: toAccountAlias,
+        executorAddress: safeAddress.toLowerCase(),
+        amount: amount,
+        status: 'successful', 
+        type: 'transferFrom',
+        taskId: result.taskId,
+        date: new Date()
+      }).save();
+    } else {
+      return res.status(400).json({
+        success: false, 
+        message: taskStatus.reason || "Transfer reverted: Check allowance or balance"
+      });
+    }
+
+    res.json({ success: true, taskId: result.taskId });
+
+  } catch (error) {
+    console.error("❌ TransferFrom failed:", error.message);
+    res.status(400).json({ success: false, message: "Transfer failed", error: error.message });
+  }
+});
+
+// ===============================================
+// GET INCOMING ALLOWANCES (Fixed Display)
+// ===============================================
+app.get('/api/allowances-for/:address', async (req, res) => {
+  try {
+    const userAddress = req.params.address;
+    
+    const currentUser = await User.findOne({ 
+      safeAddress: { $regex: new RegExp(`^${userAddress}$`, 'i') } 
+    });
+    
+    if (!currentUser) {
+      console.log("❌ User not found for address:", userAddress);
+      return res.json([]);
+    }
+
+    console.log("✅ Found user:", currentUser.accountNumber);
+
+    const savedAllowances = await Approval.find({
+      $or: [
+        { spender: { $regex: new RegExp(`^${userAddress}$`, 'i') } },
+        { spender: currentUser.accountNumber }
+      ]
+    });
+
+    console.log("📋 Found allowances:", savedAllowances.length);
+    
+    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
+    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+    
+    const liveAllowances = await Promise.all(savedAllowances.map(async (app) => {
+      try {
+        let ownerAddress = app.owner;
+        let ownerDisplay = app.owner;
+
+        const ownerUser = await User.findOne({ 
+          $or: [
+            { safeAddress: { $regex: new RegExp(`^${app.owner}$`, 'i') } },
+            { accountNumber: app.owner }
+          ]
+        });
+        
+        if (ownerUser) {
+          ownerAddress = ownerUser.safeAddress;
+          ownerDisplay = ownerUser.accountNumber;
+        }
+        
+        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, userAddress);
+        const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
+        
+        if (parseFloat(liveAmount) <= 0) {
+          await Approval.deleteOne({ _id: app._id });
+          return null;
+        }
+
+        if (liveAmount !== app.amount) {
+          await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
+        }
+        
+        return {
+          allower: ownerDisplay,
+          allowerAddress: ownerAddress,
+          amount: liveAmount,
+          date: app.date
+        };
+      } catch (err) {
+        console.error(`Allowance check failed for ${app.owner}:`, err.message);
+        return null;
+      }
+    }));
+
+    res.json(liveAllowances.filter(app => app !== null));
+  } catch (error) {
+    console.error("Critical Incoming Allowance Route Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -594,184 +773,6 @@ app.get('/api/admin/cleanup', async (req, res) => {
 });
 
 // ===============================================
-// GET TRANSACTIONS
-// ===============================================
-app.get('/api/transactions/:address', async (req, res) => {
-  try {
-    const address = req.params.address.toLowerCase();
-
-    // Show BOTH successful AND failed transactions
-    const transactions = await Transaction.find({
-      $or: [
-        { fromAddress: address }, 
-        { toAddress: address }
-      ]
-    }).sort({ date: -1 }).limit(50);
-
-    const formatted = transactions.map(tx => {
-      const isReceived = tx.toAddress?.toLowerCase() === address;
-      
-      return {
-        ...tx._doc,
-        displayType: isReceived ? 'receive' : 'sent',
-        displayPartner: tx.toAccountNumber
-      };
-    });
-
-    res.json(formatted);
-  } catch (error) {
-    console.error("❌ History Fetch Error:", error);
-    res.status(500).json([]);
-  }
-});
-
-// ===============================================
-// TRANSFER FROM (Fixed with Revert Detection)
-// ===============================================
-app.post('/api/transferFrom', async (req, res) => {
-  try {
-    const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
-    const amountWei = ethers.parseUnits(amount.toString(), 6);
-
-    // 1. Resolve everything to actual addresses
-    const fromUser = await resolveUser(fromInput);
-    const toUser = await resolveUser(toInput);
-
-    if (!fromUser) {
-      return res.status(404).json({ success: false, message: "Source account not found" });
-    }
-
-    const fromAddress = fromUser.safeAddress.toLowerCase();
-    // If toUser exists, use their safeAddress, otherwise assume toInput is a raw 0x address
-    const toAddress = toUser ? toUser.safeAddress.toLowerCase() : toInput.toLowerCase();
-    const toAccountAlias = toUser ? toUser.accountNumber : toInput;
-
-    // 2. Pass RESOLVED addresses to the blockchain function
-    const result = await sponsorSafeTransferFrom(
-      userPrivateKey,
-      safeAddress,  // The person executing the pull (the spender)
-      fromAddress,  // The person who gave the allowance
-      toAddress,    // Where the money is going
-      amountWei
-    );
-
-    if (!result || !result.taskId) {
-      return res.status(400).json({ success: false, message: "Transfer failed to submit" });
-    }
-
-    const taskStatus = await checkGelatoTaskStatus(result.taskId);
-    if (!taskStatus.success) {
-      return res.status(400).json({
-        success: false, 
-        message: taskStatus.reason || "Transfer reverted: Check allowance or balance"
-      });
-    }
-
-    // 3. Save to Database with CORRECT mapping
-    await new Transaction({
-      fromAddress: fromAddress,
-      fromAccountNumber: fromUser.accountNumber, // The Allower's alias
-      toAddress: toAddress,
-      toAccountNumber: toAccountAlias,         // The Receiver's alias (NOT fromInput!)
-      executorAddress: safeAddress.toLowerCase(), // The Spender who triggered the pull
-      amount: amount,
-      status: 'successful', 
-      type: 'transferFrom',
-      taskId: result.taskId,
-      date: new Date()
-    }).save();
-
-    res.json({ success: true, taskId: result.taskId });
-
-  } catch (error) {
-    console.error("❌ TransferFrom failed:", error.message);
-    res.status(400).json({ success: false, message: "Transfer failed", error: error.message });
-  }
-});
-
-
-// FIXED: Get incoming allowances - checks BOTH address and account number
-app.get('/api/allowances-for/:address', async (req, res) => {
-  try {
-    const userAddress = req.params.address; // DON'T lowercase yet
-    
-    // Try finding user with CASE-INSENSITIVE search
-    const currentUser = await User.findOne({ 
-      safeAddress: { $regex: new RegExp(`^${userAddress}$`, 'i') } 
-    });
-    
-    if (!currentUser) {
-      console.log("❌ User not found for address:", userAddress);
-      return res.json([]);
-    }
-
-    console.log("✅ Found user:", currentUser.accountNumber);
-
-    const savedAllowances = await Approval.find({
-      $or: [
-        { spender: { $regex: new RegExp(`^${userAddress}$`, 'i') } },
-        { spender: currentUser.accountNumber }
-      ]
-    });
-
-    console.log("📋 Found allowances:", savedAllowances.length);
-    
-    // ... rest of your code stays the same
-    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
-    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
-    
-    const liveAllowances = await Promise.all(savedAllowances.map(async (app) => {
-      try {
-        let ownerAddress = app.owner;
-        let ownerDisplay = app.owner;
-
-        // Resolve owner address and find their alias
-        const ownerUser = await User.findOne({ 
-          $or: [
-            { safeAddress: { $regex: new RegExp(`^${app.owner}$`, 'i') } },
-            { accountNumber: app.owner }
-          ]
-        });
-        
-        if (ownerUser) {
-          ownerAddress = ownerUser.safeAddress;
-          ownerDisplay = ownerUser.accountNumber; // Set display to alias
-        }
-        
-        // CHECK LIVE ON-CHAIN ALLOWANCE
-        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, userAddress);
-        const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
-        
-        // DELETE FROM DB IF ALLOWANCE IS ZERO
-        if (parseFloat(liveAmount) <= 0) {
-          await Approval.deleteOne({ _id: app._id });
-          return null;
-        }
-
-        if (liveAmount !== app.amount) {
-          await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
-        }
-        
-        return {
-          allower: ownerDisplay, // Return what was originally stored (account number or address)
-          allowerAddress: ownerAddress,
-          amount: liveAmount,
-          date: app.date
-        };
-      } catch (err) {
-        console.error(`Allowance check failed for ${app.owner}:`, err.message);
-        return null;
-      }
-    }));
-
-    res.json(liveAllowances.filter(app => app !== null));
-  } catch (error) {
-    console.error("Critical Incoming Allowance Route Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ===============================================
 // GET GLOBAL STATS
 // ===============================================
 app.get('/api/stats', async (req, res) => {
@@ -792,9 +793,8 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-
 const PORT = process.env.PORT || 10000;
-// Global Error Handler - Prevents the app from crashing on unhandled errors
+
 app.use((err, req, res, next) => {
   console.error('Final Catch-All Error:', err.stack);
   res.status(500).json({ 
@@ -807,8 +807,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SALVA BACKEND ACTIVE ON PORT ${PORT}`);
 });
 
-// KEEP-ALIVE: Self-ping every 10 minutes to stay awake on Render
-const INTERVAL = 10 * 60 * 1000; // 10 minutes
+const INTERVAL = 10 * 60 * 1000;
 const URL = "https://salva-api.onrender.com/api/stats";
 
 function reloadWebsite() {
