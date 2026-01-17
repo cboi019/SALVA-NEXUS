@@ -6,7 +6,7 @@ const User = require('../models/User'); // Assuming you have a User model
 
 // Minimal ABI to just get totalSupply
 const NGNs_ABI = ["function totalSupply() view returns (uint256)"];
-const NGNs_ADDRESS = "YOUR_DEPLOYED_CONTRACT_ADDRESS";
+const NGNs_ADDRESS = "0xEe1195Ba5A9844a5b697A7a7070D7C2FBA0e45f0";
 
 router.get('/stats', async (req, res) => {
   try {
