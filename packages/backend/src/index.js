@@ -194,13 +194,6 @@ async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
 }
 
 // ===============================================
-// HELPER: Determine if input is Account Number or Address
-// ===============================================
-function isAccountNumber(input) {
-  return !input.startsWith('0x') && input.length <= 15;
-}
-
-// ===============================================
 // HELPER: Resolve User Data (Account Number or Address)
 // ===============================================
 async function resolveUser(input) {
