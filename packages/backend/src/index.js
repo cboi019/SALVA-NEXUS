@@ -378,7 +378,7 @@ app.get('/api/approvals/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER (Using Registry Contract)
+// TRANSFER (Using Registry Contract ONLY)
 // ===============================================
 const { 
   isAccountNumber, 
@@ -391,12 +391,6 @@ app.post('/api/transfer', async (req, res) => {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Get sender from database for validation
-    const sender = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-    if (!sender) {
-      return res.status(400).json({ message: "Sender not found in database" });
-    }
-
     // Resolve recipient address using Registry
     let recipientAddress;
     try {
@@ -405,20 +399,24 @@ app.post('/api/transfer', async (req, res) => {
       return res.status(404).json({ message: error.message });
     }
 
-    // Determine what type the sender used
+    // Determine what type the sender used for recipient
     const senderUsedAccountNumber = isAccountNumber(toInput);
     
     // Get sender's identifier of the SAME TYPE using Registry
     let senderDisplayIdentifier;
+    let senderAccountNumber = null;
+    
     if (senderUsedAccountNumber) {
-      // Sender used account number, so store sender's account number
-      senderDisplayIdentifier = sender.accountNumber;
+      // Sender used account number for recipient, so get sender's account number from Registry
+      senderAccountNumber = await getAccountNumberFromAddress(safeAddress);
+      senderDisplayIdentifier = senderAccountNumber || safeAddress.toLowerCase();
     } else {
-      // Sender used address, so store sender's address
+      // Sender used address for recipient, so use sender's address
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
     console.log(`📝 Transfer Details:`);
+    console.log(`   Sender address: ${safeAddress}`);
     console.log(`   Sender used: ${senderUsedAccountNumber ? 'Account Number' : 'Address'}`);
     console.log(`   Sender identifier to store: ${senderDisplayIdentifier}`);
     console.log(`   Recipient input: ${toInput}`);
@@ -439,7 +437,7 @@ app.post('/api/transfer', async (req, res) => {
       
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: sender.accountNumber,
+        fromAccountNumber: senderAccountNumber,
         toAddress: recipientAddress,
         toAccountNumber: toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
@@ -464,7 +462,7 @@ app.post('/api/transfer', async (req, res) => {
     if (taskStatus.success) {
       const savedTx = await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: sender.accountNumber,
+        fromAccountNumber: senderAccountNumber,
         toAddress: recipientAddress,
         toAccountNumber: toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
@@ -494,19 +492,16 @@ app.post('/api/transfer', async (req, res) => {
     console.error("❌ Transfer failed:", error.message);
     
     try {
-      const sender = await User.findOne({ safeAddress: req.body.safeAddress.toLowerCase() });
-      
-      if (!sender) {
-        return res.status(400).json({ 
-          success: false, 
-          message: "Sender not found" 
-        });
-      }
-      
       const senderUsedAccountNumber = isAccountNumber(req.body.toInput);
-      const senderDisplayIdentifier = senderUsedAccountNumber
-        ? sender.accountNumber
-        : req.body.safeAddress.toLowerCase();
+      let senderAccountNumber = null;
+      let senderDisplayIdentifier;
+      
+      if (senderUsedAccountNumber) {
+        senderAccountNumber = await getAccountNumberFromAddress(req.body.safeAddress);
+        senderDisplayIdentifier = senderAccountNumber || req.body.safeAddress.toLowerCase();
+      } else {
+        senderDisplayIdentifier = req.body.safeAddress.toLowerCase();
+      }
       
       let recipientAddress = null;
       try {
@@ -517,7 +512,7 @@ app.post('/api/transfer', async (req, res) => {
       
       await new Transaction({
         fromAddress: req.body.safeAddress.toLowerCase(),
-        fromAccountNumber: sender.accountNumber,
+        fromAccountNumber: senderAccountNumber,
         toAddress: recipientAddress,
         toAccountNumber: req.body.toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
@@ -631,18 +626,12 @@ app.get('/api/transactions/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM (Using Registry Contract)
+// TRANSFER FROM (Using Registry Contract ONLY)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
     const amountWei = ethers.parseUnits(amount.toString(), 6);
-
-    // Get executor from database
-    const executor = await User.findOne({ safeAddress: safeAddress.toLowerCase() });
-    if (!executor) {
-      return res.status(404).json({ success: false, message: "Executor not found" });
-    }
 
     // Resolve FROM address using Registry
     let fromAddress;
@@ -674,6 +663,7 @@ app.post('/api/transferFrom', async (req, res) => {
     }
 
     console.log(`📝 TransferFrom Details:`);
+    console.log(`   Executor address: ${safeAddress}`);
     console.log(`   Executor used for FROM: ${fromInputWasAccountNumber ? 'Account Number' : 'Address'}`);
     console.log(`   Sender identifier to store: ${senderDisplayIdentifier}`);
     console.log(`   From input: ${fromInput} → ${fromAddress}`);
@@ -698,15 +688,9 @@ app.post('/api/transferFrom', async (req, res) => {
     
     // ONLY SAVE IF SUCCESSFUL
     if (taskStatus.success) {
-      // Get FROM account number if executor used account number
-      let fromAccountNumber = null;
-      if (fromInputWasAccountNumber) {
-        fromAccountNumber = fromInput;
-      }
-
       const savedTx = await new Transaction({
         fromAddress: fromAddress,
-        fromAccountNumber: fromAccountNumber,
+        fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
         toAddress: toAddress,
         toAccountNumber: toInput,
         senderDisplayIdentifier: senderDisplayIdentifier,
