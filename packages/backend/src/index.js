@@ -315,7 +315,7 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
-// GET APPROVALS (FIXED - Display what owner inputted)
+// GET APPROVALS (FIXED - Display based on what approver used)
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
   try {
@@ -351,13 +351,21 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
-        // FIXED: Display what owner originally inputted (stored in displaySpender)
-        // If displaySpender exists, use it; otherwise fallback to spender
-        const displayValue = app.displaySpender || app.spender;
+        // FIXED: Check what type the approver used
+        const approverUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
+        let displayValue;
+        
+        if (approverUsedAccountNumber) {
+          // Approver used account number, so display account number
+          displayValue = app.displaySpender || app.spender;
+        } else {
+          // Approver used address, just show the address
+          displayValue = spenderAddress;
+        }
         
         return {
           _id: app._id,
-          spender: spenderAddress,  // Keep actual address for operations
+          spender: spenderAddress,  // Actual address for backend operations
           displaySpender: displayValue,  // What to show in UI
           amount: app.amount,
           date: app.date
