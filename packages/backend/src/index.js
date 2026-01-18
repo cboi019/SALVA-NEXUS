@@ -315,7 +315,7 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
-// GET APPROVALS
+// GET APPROVALS (FIXED - Display what owner inputted)
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
   try {
@@ -327,19 +327,12 @@ app.get('/api/approvals/:address', async (req, res) => {
     
     const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
       try {
+        // Resolve spender address for blockchain query
         let spenderAddress = app.spender;
-        let spenderDisplay = app.spender;
-
-        const spenderUser = await User.findOne({ 
-          $or: [
-            { accountNumber: app.spender },
-            { safeAddress: { $regex: new RegExp(`^${app.spender}$`, 'i') } }
-          ]
-        });
-
-        if (spenderUser) {
-          spenderAddress = spenderUser.safeAddress;
-          spenderDisplay = spenderUser.accountNumber;
+        try {
+          spenderAddress = await resolveToAddress(app.spender);
+        } catch (e) {
+          // If resolution fails, use as-is
         }
 
         const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
@@ -358,15 +351,16 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
+        // FIXED: Display what owner inputted (stored in displaySpender)
         return {
           _id: app._id,
-          spender: spenderDisplay,
+          spender: app.displaySpender || app.spender,  // Show what owner inputted
           amount: app.amount,
           date: app.date
         };
       } catch (err) {
         console.error(`Sync failed for ${app.spender}:`, err.message);
-        return app;
+        return null;
       }
     }));
 
@@ -549,21 +543,19 @@ app.post('/api/transfer', async (req, res) => {
 });
 
 // ===============================================
-// APPROVE (Fixed Display + 8-Second Delay)
+// APPROVE (FIXED - Use Registry for display)
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
     
-    const spenderUser = await User.findOne({ 
-      $or: [
-        { accountNumber: spenderInput },
-        { safeAddress: { $regex: new RegExp(`^${spenderInput}$`, 'i') } }
-      ]
-    });
-
-    const finalSpenderAddress = spenderUser ? spenderUser.safeAddress.toLowerCase() : spenderInput.toLowerCase();
-    const finalDisplaySpender = spenderUser ? spenderUser.accountNumber : spenderInput;
+    // Resolve spender address using Registry
+    let finalSpenderAddress;
+    try {
+      finalSpenderAddress = await resolveToAddress(spenderInput);
+    } catch (error) {
+      return res.status(404).json({ message: `Spender: ${error.message}` });
+    }
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
     
@@ -581,15 +573,16 @@ app.post('/api/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
+    // FIXED: Store what user inputted (account number or address)
     await Approval.findOneAndUpdate(
       { 
         owner: safeAddress.toLowerCase(), 
-        spender: finalSpenderAddress
+        spender: finalSpenderAddress.toLowerCase()
       },
       { 
         amount: amount, 
         date: new Date(),
-        displaySpender: finalDisplaySpender
+        displaySpender: spenderInput  // Store what user inputted
       },
       { upsert: true, new: true }
     );
@@ -798,122 +791,78 @@ app.post('/api/transferFrom', async (req, res) => {
 });
 
 // ===============================================
-// GET INCOMING ALLOWANCES (Fixed Display)
+// GET INCOMING ALLOWANCES (FIXED - Display what owner used)
 // ===============================================
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
-    const userAddress = req.params.address;
+    const userAddress = req.params.address.toLowerCase();
     
-    const currentUser = await User.findOne({ 
-      safeAddress: { $regex: new RegExp(`^${userAddress}$`, 'i') } 
-    });
-    
-    if (!currentUser) {
-      console.log("❌ User not found for address:", userAddress);
-      return res.json([]);
-    }
-
-    console.log("✅ Found user:", currentUser.accountNumber);
-
-    const savedAllowances = await Approval.find({
-      $or: [
-        { spender: { $regex: new RegExp(`^${userAddress}$`, 'i') } },
-        { spender: currentUser.accountNumber }
-      ]
-    });
-
-    console.log("📋 Found allowances:", savedAllowances.length);
-    
+    // Find all approvals where this user is the spender
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
     
-    const liveAllowances = await Promise.all(savedAllowances.map(async (app) => {
+    // Find approvals where spender matches this user's address
+    const allApprovals = await Approval.find({});
+    
+    const relevantApprovals = [];
+    
+    for (const app of allApprovals) {
       try {
-        let ownerAddress = app.owner;
-        let ownerDisplay = app.owner;
-
-        const ownerUser = await User.findOne({ 
-          $or: [
-            { safeAddress: { $regex: new RegExp(`^${app.owner}$`, 'i') } },
-            { accountNumber: app.owner }
-          ]
-        });
-        
-        if (ownerUser) {
-          ownerAddress = ownerUser.safeAddress;
-          ownerDisplay = ownerUser.accountNumber;
+        // Resolve the stored spender to an address
+        let spenderAddress;
+        try {
+          spenderAddress = await resolveToAddress(app.spender);
+        } catch (e) {
+          spenderAddress = app.spender.toLowerCase();
         }
         
-        const liveAllowanceWei = await tokenContract.allowance(ownerAddress, userAddress);
-        const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
-        
-        if (parseFloat(liveAmount) <= 0) {
-          await Approval.deleteOne({ _id: app._id });
-          return null;
+        // Check if this approval's spender matches current user
+        if (spenderAddress.toLowerCase() === userAddress.toLowerCase()) {
+          // Check live allowance amount
+          const liveAllowanceWei = await tokenContract.allowance(app.owner, userAddress);
+          const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
+          
+          if (parseFloat(liveAmount) > 0) {
+            // Update amount if changed
+            if (liveAmount !== app.amount) {
+              await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
+            }
+            
+            // Get owner's display identifier (what they used for spender)
+            // If owner used account number, get owner's account number
+            // If owner used address, get owner's address
+            const ownerUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
+            let ownerDisplay;
+            
+            if (ownerUsedAccountNumber) {
+              // Owner used account number for spender, so show owner's account number
+              ownerDisplay = await getAccountNumberFromAddress(app.owner);
+              if (!ownerDisplay) ownerDisplay = app.owner;
+            } else {
+              // Owner used address for spender, so show owner's address
+              ownerDisplay = app.owner;
+            }
+            
+            relevantApprovals.push({
+              allower: ownerDisplay,
+              allowerAddress: app.owner,
+              amount: liveAmount,
+              date: app.date
+            });
+          } else {
+            // Remove if allowance is 0
+            await Approval.deleteOne({ _id: app._id });
+          }
         }
-
-        if (liveAmount !== app.amount) {
-          await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
-        }
-        
-        return {
-          allower: ownerDisplay,
-          allowerAddress: ownerAddress,
-          amount: liveAmount,
-          date: app.date
-        };
       } catch (err) {
-        console.error(`Allowance check failed for ${app.owner}:`, err.message);
-        return null;
+        console.error(`Error processing approval ${app._id}:`, err.message);
       }
-    }));
+    }
 
-    res.json(liveAllowances.filter(app => app !== null));
+    res.json(relevantApprovals);
   } catch (error) {
     console.error("Critical Incoming Allowance Route Error:", error);
     res.status(500).json({ error: error.message });
-  }
-});
-
-// Temporarily add this test route to your backend:
-app.get('/api/debug/approvals', async (req, res) => {
-  const all = await Approval.find({});
-  res.json(all);
-});
-
-app.get('/api/admin/cleanup', async (req, res) => {
-  try {
-    const approvals = await Approval.find({});
-    let mergedCount = 0;
-    
-    for (const app of approvals) {
-      // 1. Resolve current entry to a clean wallet address
-      let resolvedSpender = app.spender.toLowerCase();
-      if (!app.spender.startsWith('0x')) {
-        const user = await User.findOne({ accountNumber: app.spender });
-        if (user) resolvedSpender = user.safeAddress.toLowerCase();
-      }
-
-      // 2. Look for duplicates (same owner + resolved spender address)
-      const duplicate = await Approval.findOne({
-        _id: { $ne: app._id },
-        owner: app.owner.toLowerCase(),
-        spender: resolvedSpender
-      });
-
-      if (duplicate) {
-        // Delete the redundant one
-        await Approval.deleteOne({ _id: app._id });
-        mergedCount++;
-      } else if (app.spender !== resolvedSpender) {
-        // If no duplicate but it was using an alias, update it to the address
-        app.spender = resolvedSpender;
-        await app.save();
-      }
-    }
-    res.json({ success: true, message: `Cleanup complete. Merged ${mergedCount} duplicates.` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
   }
 });
 
