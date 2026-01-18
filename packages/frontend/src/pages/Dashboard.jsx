@@ -348,7 +348,7 @@ const handleAutofillFromAllowance = (allowance) => {
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="font-black text-xs">{formatNumber(app.amount)}</p>
-                          <button onClick={() => setApproveData({ spender: app.displaySpender || app.sender, amount: '0' })} className="text-[8px] text-red-500 font-bold uppercase hover:underline">Revoke</button>
+                          <button onClick={() => setApproveData({ spender: app.displaySpender || app.spender, amount: '0' })} className="text-[8px] text-red-500 font-bold uppercase hover:underline">Revoke</button>
                         </div>
                       </div>
                     ))}
