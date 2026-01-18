@@ -1,4 +1,4 @@
-// Navbar.jsx - FIXED WITH COOL THEME TOGGLE
+// Navbar.jsx - MODERN SUN TOGGLE
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -77,40 +77,164 @@ const Navbar = () => {
             {darkMode ? 'Dark' : 'Light'}
           </span>
           
-          <button 
+          <motion.button 
             onClick={() => setDarkMode(!darkMode)}
-            aria-label="Toggle Dark Mode"
-            className="relative w-14 h-7 rounded-full transition-all duration-300 shadow-md dark:shadow-salvaGold/20"
+            aria-label="Toggle Theme"
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            className="relative w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300"
             style={{
               background: darkMode 
-                ? 'linear-gradient(135deg, #1a1a1b 0%, #2d2d30 100%)'
-                : 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)'
+                ? 'transparent'
+                : 'transparent'
             }}
           >
-            <motion.div 
-              animate={{ x: darkMode ? 28 : 2 }}
-              transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              className="absolute top-1 w-5 h-5 rounded-full flex items-center justify-center"
-              style={{
-                background: darkMode
-                  ? 'radial-gradient(circle, #d4af37 0%, #c9a22e 100%)'
-                  : '#ffffff',
-                boxShadow: darkMode 
-                  ? '0 0 10px rgba(212, 175, 55, 0.6), 0 0 20px rgba(212, 175, 55, 0.3)'
-                  : '0 2px 8px rgba(0, 0, 0, 0.15)'
+            {/* Sun Icon - Morphs between dark and light mode */}
+            <motion.svg 
+              width="28" 
+              height="28" 
+              viewBox="0 0 24 24" 
+              fill="none"
+              animate={{
+                rotate: darkMode ? 0 : 180
               }}
+              transition={{ duration: 0.5, ease: "easeInOut" }}
             >
-              {darkMode ? (
-                <svg className="w-3 h-3 text-black" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" />
-                </svg>
-              ) : (
-                <svg className="w-3 h-3 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                </svg>
-              )}
-            </motion.div>
-          </button>
+              {/* Center Circle */}
+              <motion.circle 
+                cx="12" 
+                cy="12" 
+                animate={{
+                  r: darkMode ? 4 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Top Ray */}
+              <motion.rect
+                x="11"
+                y="1"
+                width="2"
+                rx="1"
+                animate={{
+                  height: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Bottom Ray */}
+              <motion.rect
+                x="11"
+                animate={{
+                  y: darkMode ? 20 : 18,
+                  height: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                width="2"
+                rx="1"
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Left Ray */}
+              <motion.rect
+                y="11"
+                x="1"
+                height="2"
+                rx="1"
+                animate={{
+                  width: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Right Ray */}
+              <motion.rect
+                animate={{
+                  x: darkMode ? 20 : 18,
+                  width: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                y="11"
+                height="2"
+                rx="1"
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Top-Right Diagonal */}
+              <motion.rect
+                animate={{
+                  x: darkMode ? 17.5 : 16.5,
+                  y: darkMode ? 4.3 : 3.5,
+                  width: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                height="2"
+                rx="1"
+                transform="rotate(45 19 5)"
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Top-Left Diagonal */}
+              <motion.rect
+                animate={{
+                  x: darkMode ? 3.5 : 2.5,
+                  y: darkMode ? 4.3 : 3.5,
+                  width: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                height="2"
+                rx="1"
+                transform="rotate(-45 5 5)"
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Bottom-Right Diagonal */}
+              <motion.rect
+                animate={{
+                  x: darkMode ? 17.5 : 16.5,
+                  y: darkMode ? 17.7 : 16.5,
+                  width: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                height="2"
+                rx="1"
+                transform="rotate(-45 19 19)"
+                transition={{ duration: 0.3 }}
+              />
+              
+              {/* Bottom-Left Diagonal */}
+              <motion.rect
+                animate={{
+                  x: darkMode ? 3.5 : 2.5,
+                  y: darkMode ? 17.7 : 16.5,
+                  width: darkMode ? 3 : 5,
+                  fill: darkMode ? "#ffffff" : "#000000"
+                }}
+                height="2"
+                rx="1"
+                transform="rotate(45 5 19)"
+                transition={{ duration: 0.3 }}
+              />
+            </motion.svg>
+            
+            {/* White Glow in Dark Mode */}
+            {darkMode && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 rounded-full"
+                style={{
+                  boxShadow: '0 0 20px rgba(255, 255, 255, 0.4), 0 0 40px rgba(255, 255, 255, 0.2)',
+                  filter: 'blur(8px)',
+                  zIndex: -1
+                }}
+              />
+            )}
+          </motion.button>
         </div>
       </div>
     </nav>
