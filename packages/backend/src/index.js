@@ -315,7 +315,7 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
-// FIXED GET APPROVALS - Display Matching Type
+// FIXED GET APPROVALS - Display What Approver Used
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
   try {
@@ -347,7 +347,7 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
-        // FIXED: Display based on what approver originally inputted
+        // ✅ FIXED: Display based on what approver originally inputted
         let displaySpender;
         
         if (app.spenderInputType === 'accountNumber') {
@@ -361,7 +361,7 @@ app.get('/api/approvals/:address', async (req, res) => {
         return {
           _id: app._id,
           spender: spenderAddress,          // Actual address for operations
-          displaySpender: displaySpender,   // What to show in UI (matching input type)
+          displaySpender: displaySpender,   // ✅ What to show in UI (matching input type)
           amount: app.amount,
           date: app.date,
           inputType: app.spenderInputType   // For debugging/reference
@@ -410,7 +410,7 @@ app.get('/api/allowances-for/:address', async (req, res) => {
               await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
             }
             
-            // FIXED: Display based on what approver originally inputted
+            // ✅ FIXED: Display based on what approver originally inputted
             let ownerDisplay;
             let spenderDisplay;
             
@@ -427,9 +427,9 @@ app.get('/api/allowances-for/:address', async (req, res) => {
             }
             
             relevantApprovals.push({
-              allower: ownerDisplay,              // FROM field - owner's identifier
+              allower: ownerDisplay,              // ✅ FROM field - owner's identifier
               allowerAddress: app.owner,          // Actual address for backend
-              spenderDisplay: spenderDisplay,     // TO field - spender's identifier
+              spenderDisplay: spenderDisplay,     // ✅ TO field - spender's identifier
               amount: liveAmount,
               date: app.date,
               inputType: app.spenderInputType     // For debugging
@@ -624,7 +624,7 @@ app.post('/api/transfer', async (req, res) => {
 
 
 // ===============================================
-// FIXED APPROVE ENDPOINT - Store Both Identifiers
+// FIXED APPROVE ENDPOINT - Store What Approver Inputted
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
@@ -654,7 +654,7 @@ app.post('/api/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
-    // FIXED: Store what approver inputted AND the resolved address
+    // ✅ FIXED: Store what approver inputted AND the resolved address
     const inputType = isAccountNumber(spenderInput) ? 'accountNumber' : 'address';
     
     await Approval.findOneAndUpdate(
@@ -665,8 +665,8 @@ app.post('/api/approve', async (req, res) => {
       { 
         amount: amount, 
         date: new Date(),
-        spenderInput: spenderInput,           // What approver typed
-        spenderInputType: inputType           // Type of input used
+        spenderInput: spenderInput,           // ✅ What approver typed
+        spenderInputType: inputType           // ✅ Type of input used
       },
       { upsert: true, new: true }
     );

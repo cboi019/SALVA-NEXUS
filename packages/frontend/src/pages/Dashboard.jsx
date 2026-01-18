@@ -238,7 +238,7 @@ const downloadReceipt = (e, tx) => {
     finally { setLoading(false); }
   };
 
-// FIXED: Autofill function - use matching types
+// ✅ FIXED: Autofill function - use matching types
 const handleAutofillFromAllowance = (allowance) => {
   // Use the matching identifier types returned from backend
   setTransferFromData({ 
