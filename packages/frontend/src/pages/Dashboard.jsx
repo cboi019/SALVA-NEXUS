@@ -238,18 +238,12 @@ const downloadReceipt = (e, tx) => {
     finally { setLoading(false); }
   };
 
+// FIXED: Autofill function - use matching types
 const handleAutofillFromAllowance = (allowance) => {
-  // Check if approver used address (starts with 0x) or account number
-  const approverUsedAddress = allowance.allower.startsWith('0x');
-  
-  // Match the type: if approver used address, use spender's address; if account number, use spender's account number
-  const spenderIdentifier = approverUsedAddress 
-    ? user.safeAddress 
-    : (user.accountNumber || user.safeAddress);
-  
+  // Use the matching identifier types returned from backend
   setTransferFromData({ 
-    from: allowance.allower, 
-    to: spenderIdentifier, 
+    from: allowance.allower,           // Owner's identifier (account number or address)
+    to: allowance.spenderDisplay,      // Spender's identifier (account number or address) 
     amount: allowance.amount 
   });
   
@@ -258,7 +252,7 @@ const handleAutofillFromAllowance = (allowance) => {
 
   if (!user) return null;
 
-  // SEE NEXT MESSAGE FOR JSX (Part 2)
+  // ADD YOU RETURN FIXES HERE
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
@@ -354,7 +348,7 @@ const handleAutofillFromAllowance = (allowance) => {
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="font-black text-xs">{formatNumber(app.amount)}</p>
-                          <button onClick={() => setApproveData({ spender: app.spender, amount: '0' })} className="text-[8px] text-red-500 font-bold uppercase hover:underline">Revoke</button>
+                          <button onClick={() => setApproveData({ spender: app.displaySpender || app.sender, amount: '0' })} className="text-[8px] text-red-500 font-bold uppercase hover:underline">Revoke</button>
                         </div>
                       </div>
                     ))}

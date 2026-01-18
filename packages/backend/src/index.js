@@ -351,10 +351,14 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
-        // FIXED: Display what owner inputted (stored in displaySpender)
+        // FIXED: Display what owner originally inputted (stored in displaySpender)
+        // If displaySpender exists, use it; otherwise fallback to spender
+        const displayValue = app.displaySpender || app.spender;
+        
         return {
           _id: app._id,
-          spender: app.displaySpender || app.spender,  // Show what owner inputted
+          spender: spenderAddress,  // Keep actual address for operations
+          displaySpender: displayValue,  // What to show in UI
           amount: app.amount,
           date: app.date
         };
@@ -791,17 +795,16 @@ app.post('/api/transferFrom', async (req, res) => {
 });
 
 // ===============================================
-// GET INCOMING ALLOWANCES (FIXED - Display what owner used)
+// GET INCOMING ALLOWANCES (FIXED - Display matching type)
 // ===============================================
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
     const userAddress = req.params.address.toLowerCase();
     
-    // Find all approvals where this user is the spender
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
     
-    // Find approvals where spender matches this user's address
+    // Find all approvals
     const allApprovals = await Approval.find({});
     
     const relevantApprovals = [];
@@ -828,24 +831,31 @@ app.get('/api/allowances-for/:address', async (req, res) => {
               await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
             }
             
-            // Get owner's display identifier (what they used for spender)
-            // If owner used account number, get owner's account number
-            // If owner used address, get owner's address
-            const ownerUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
-            let ownerDisplay;
+            // FIXED: Determine what type the approver (owner) used
+            const approverUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
             
-            if (ownerUsedAccountNumber) {
-              // Owner used account number for spender, so show owner's account number
+            let ownerDisplay;
+            let spenderDisplay;
+            
+            if (approverUsedAccountNumber) {
+              // Owner used account number for spender, so:
+              // - Show owner's account number
+              // - Keep spender's account number (what owner inputted)
               ownerDisplay = await getAccountNumberFromAddress(app.owner);
-              if (!ownerDisplay) ownerDisplay = app.owner;
+              if (!ownerDisplay) ownerDisplay = app.owner; // Fallback to address
+              spenderDisplay = app.displaySpender || app.spender; // What owner inputted
             } else {
-              // Owner used address for spender, so show owner's address
+              // Owner used address for spender, so:
+              // - Show owner's address
+              // - Keep spender's address
               ownerDisplay = app.owner;
+              spenderDisplay = userAddress; // Current user's address
             }
             
             relevantApprovals.push({
-              allower: ownerDisplay,
-              allowerAddress: app.owner,
+              allower: ownerDisplay,              // What to show for "FROM" in form
+              allowerAddress: app.owner,          // Actual address for backend
+              spenderDisplay: spenderDisplay,     // What to show for "TO" in form  
               amount: liveAmount,
               date: app.date
             });
