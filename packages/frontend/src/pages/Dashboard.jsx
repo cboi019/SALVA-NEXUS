@@ -238,10 +238,23 @@ const downloadReceipt = (e, tx) => {
     finally { setLoading(false); }
   };
 
-  const handleAutofillFromAllowance = (allowance) => {
-    setTransferFromData({ from: allowance.allower, to: user.accountNumber || user.safeAddress, amount: allowance.amount });
-    showMsg("Form autofilled from allowance", "success");
-  };
+const handleAutofillFromAllowance = (allowance) => {
+  // Check if approver used address (starts with 0x) or account number
+  const approverUsedAddress = allowance.allower.startsWith('0x');
+  
+  // Match the type: if approver used address, use spender's address; if account number, use spender's account number
+  const spenderIdentifier = approverUsedAddress 
+    ? user.safeAddress 
+    : (user.accountNumber || user.safeAddress);
+  
+  setTransferFromData({ 
+    from: allowance.allower, 
+    to: spenderIdentifier, 
+    amount: allowance.amount 
+  });
+  
+  showMsg("Form autofilled from allowance", "success");
+};
 
   if (!user) return null;
 
