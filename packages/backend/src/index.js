@@ -315,7 +315,7 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
-// GET APPROVALS (FIXED - Display based on what approver used)
+// FIXED GET APPROVALS - Display Matching Type
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
   try {
@@ -327,22 +327,18 @@ app.get('/api/approvals/:address', async (req, res) => {
     
     const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
       try {
-        // Resolve spender address for blockchain query
-        let spenderAddress = app.spender;
-        try {
-          spenderAddress = await resolveToAddress(app.spender);
-        } catch (e) {
-          // If resolution fails, use as-is
-        }
-
+        // Use the stored address for blockchain query
+        const spenderAddress = app.spender;
         const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
         const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
+        // Delete if allowance is 0
         if (parseFloat(liveAmount) <= 0) {
           await Approval.deleteOne({ _id: app._id });
           return null; 
         }
 
+        // Update amount if changed
         if (liveAmount !== app.amount) {
           await Approval.updateOne(
             { _id: app._id },
@@ -351,24 +347,24 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
-        // FIXED: Check what type the approver used
-        const approverUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
-        let displayValue;
+        // FIXED: Display based on what approver originally inputted
+        let displaySpender;
         
-        if (approverUsedAccountNumber) {
+        if (app.spenderInputType === 'accountNumber') {
           // Approver used account number, so display account number
-          displayValue = app.displaySpender || app.spender;
+          displaySpender = app.spenderInput;
         } else {
-          // Approver used address, just show the address
-          displayValue = spenderAddress;
+          // Approver used address, so display address
+          displaySpender = spenderAddress;
         }
         
         return {
           _id: app._id,
-          spender: spenderAddress,  // Actual address for backend operations
-          displaySpender: displayValue,  // What to show in UI
+          spender: spenderAddress,          // Actual address for operations
+          displaySpender: displaySpender,   // What to show in UI (matching input type)
           amount: app.amount,
-          date: app.date
+          date: app.date,
+          inputType: app.spenderInputType   // For debugging/reference
         };
       } catch (err) {
         console.error(`Sync failed for ${app.spender}:`, err.message);
@@ -379,6 +375,78 @@ app.get('/api/approvals/:address', async (req, res) => {
     res.json(liveApprovals.filter(app => app !== null));
   } catch (error) {
     console.error("Critical Approval Route Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ===============================================
+// FIXED GET INCOMING ALLOWANCES - Display Matching Type
+// ===============================================
+app.get('/api/allowances-for/:address', async (req, res) => {
+  try {
+    const userAddress = req.params.address.toLowerCase();
+    
+    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
+    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
+    
+    // Find all approvals where this user is the spender
+    const allApprovals = await Approval.find({});
+    
+    const relevantApprovals = [];
+    
+    for (const app of allApprovals) {
+      try {
+        const spenderAddress = app.spender.toLowerCase();
+        
+        // Check if this approval's spender matches current user
+        if (spenderAddress === userAddress) {
+          // Check live allowance amount
+          const liveAllowanceWei = await tokenContract.allowance(app.owner, userAddress);
+          const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
+          
+          if (parseFloat(liveAmount) > 0) {
+            // Update amount if changed
+            if (liveAmount !== app.amount) {
+              await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
+            }
+            
+            // FIXED: Display based on what approver originally inputted
+            let ownerDisplay;
+            let spenderDisplay;
+            
+            if (app.spenderInputType === 'accountNumber') {
+              // Approver used account number for spender, so use account numbers
+              // Get owner's account number
+              const ownerAccountNumber = await getAccountNumberFromAddress(app.owner);
+              ownerDisplay = ownerAccountNumber || app.owner; // Fallback to address
+              spenderDisplay = app.spenderInput; // What approver inputted
+            } else {
+              // Approver used address for spender, so use addresses
+              ownerDisplay = app.owner;
+              spenderDisplay = userAddress;
+            }
+            
+            relevantApprovals.push({
+              allower: ownerDisplay,              // FROM field - owner's identifier
+              allowerAddress: app.owner,          // Actual address for backend
+              spenderDisplay: spenderDisplay,     // TO field - spender's identifier
+              amount: liveAmount,
+              date: app.date,
+              inputType: app.spenderInputType     // For debugging
+            });
+          } else {
+            // Remove if allowance is 0
+            await Approval.deleteOne({ _id: app._id });
+          }
+        }
+      } catch (err) {
+        console.error(`Error processing approval ${app._id}:`, err.message);
+      }
+    }
+
+    res.json(relevantApprovals);
+  } catch (error) {
+    console.error("Critical Incoming Allowance Route Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -554,8 +622,9 @@ app.post('/api/transfer', async (req, res) => {
   }
 });
 
+
 // ===============================================
-// APPROVE (FIXED - Use Registry for display)
+// FIXED APPROVE ENDPOINT - Store Both Identifiers
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
@@ -585,16 +654,19 @@ app.post('/api/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
-    // FIXED: Store what user inputted (account number or address)
+    // FIXED: Store what approver inputted AND the resolved address
+    const inputType = isAccountNumber(spenderInput) ? 'accountNumber' : 'address';
+    
     await Approval.findOneAndUpdate(
       { 
         owner: safeAddress.toLowerCase(), 
-        spender: finalSpenderAddress.toLowerCase()
+        spender: finalSpenderAddress.toLowerCase()  // Address is the unique key
       },
       { 
         amount: amount, 
         date: new Date(),
-        displaySpender: spenderInput  // Store what user inputted
+        spenderInput: spenderInput,           // What approver typed
+        spenderInputType: inputType           // Type of input used
       },
       { upsert: true, new: true }
     );
