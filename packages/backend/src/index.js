@@ -56,16 +56,7 @@ app.use(express.urlencoded({ extended: true }));
 // ===============================================
 // SECURITY: MongoDB Injection Protection
 // ===============================================
-app.use(mongoSanitize({
-  replaceWith: '_',
-  onSanitize: ({ req, key }) => {
-    console.warn(`⚠️ Sanitized input detected: ${key}`);
-  },
-  // ✅ FIX: Don't sanitize query params (causes Express incompatibility)
-  allowDots: true,
-  // Only sanitize body and params, skip query
-  sanitizeKeys: ['body', 'params']
-}));
+app.use(mongoSanitize());  // ✅ Use default config - works with all Express versions
 
 // ===============================================
 // SECURITY: CORS (Environment-Based)
