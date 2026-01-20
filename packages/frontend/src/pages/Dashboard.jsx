@@ -22,6 +22,7 @@ const Dashboard = () => {
   const [approvals, setApprovals] = useState([]);
   const [incomingAllowances, setIncomingAllowances] = useState([]); 
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
+  const [isTransactionPending, setIsTransactionPending] = useState(false);
   
   // PIN VERIFICATION STATE
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -337,6 +338,7 @@ const Dashboard = () => {
     if (amountError) return showMsg("Insufficient balance", "error");
     
     setLoading(true);
+    setIsTransactionPending(true);
     showMsg("Initiating blockchain transfer...", "info");
     
     try {
@@ -368,6 +370,7 @@ const Dashboard = () => {
       showMsg("Network error", "error");
     } finally {
       setLoading(false);
+      setIsTransactionPending(false);
       setPendingTransaction(null);
     }
   };
@@ -375,6 +378,7 @@ const Dashboard = () => {
   // Execute approval (called after PIN verification)
   const executeApproval = async (privateKey) => {
     setLoading(true);
+    setIsTransactionPending(true);
     
     try {
       const response = await fetch(`${API_BASE_URL}/api/approve`, {
@@ -402,6 +406,7 @@ const Dashboard = () => {
       showMsg("Connection error", "error");
     } finally {
       setLoading(false);
+      setIsTransactionPending(false);
       setPendingTransaction(null);
     }
   };
@@ -409,6 +414,7 @@ const Dashboard = () => {
   // Execute transferFrom (called after PIN verification)
   const executeTransferFrom = async (privateKey) => {
     setLoading(true);
+    setIsTransactionPending(true);
     
     try {
       const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
@@ -441,6 +447,7 @@ const Dashboard = () => {
       showMsg("Network Error: Pull failed", "error");
     } finally {
       setLoading(false);
+      setIsTransactionPending(false);
       setPendingTransaction(null);
     }
   };
@@ -458,7 +465,7 @@ const Dashboard = () => {
 
   if (!user) return null;
 
-  return (
+return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
       <Stars />
       <div className="max-w-4xl mx-auto relative z-10">
@@ -605,7 +612,7 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* NEW: No PIN Warning Slide-in */}
+      {/* No PIN Warning Slide-in */}
       <AnimatePresence>
         {noPinWarning && (
           <motion.div 
@@ -634,7 +641,7 @@ const Dashboard = () => {
         )}
       </AnimatePresence>
 
-      {/* NEW: PIN Verification Modal */}
+      {/* PIN Verification Modal */}
       <AnimatePresence>
         {isPinModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -699,6 +706,7 @@ const Dashboard = () => {
         )}
       </AnimatePresence>
 
+      {/* Send Modal */}
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
@@ -727,10 +735,39 @@ const Dashboard = () => {
         )}
       </AnimatePresence>
 
+      {/* Notification Toast */}
       <AnimatePresence>
         {notification.show && (
           <motion.div initial={{ y: 100, x: "-50%", opacity: 0 }} animate={{ y: 0, x: "-50%", opacity: 1 }} exit={{ y: 100, x: "-50%", opacity: 0 }} className={`fixed bottom-6 left-1/2 px-6 py-4 rounded-2xl z-[100] font-black text-[10px] uppercase tracking-widest shadow-2xl w-[90%] sm:w-auto text-center ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-salvaGold text-black'}`}>
             {notification.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Transaction Pending Overlay */}
+      <AnimatePresence>
+        {isTransactionPending && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-lg"
+          >
+            <div className="text-center">
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 border-4 border-salvaGold/20 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-transparent border-t-salvaGold rounded-full animate-spin"></div>
+              </div>
+              <h3 className="text-2xl font-black text-white mb-2">Processing Transaction</h3>
+              <p className="text-sm text-gray-400 uppercase tracking-widest font-bold">
+                Waiting for blockchain confirmation...
+              </p>
+              <div className="mt-6 flex items-center justify-center gap-1">
+                <div className="w-2 h-2 bg-salvaGold rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-salvaGold rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-salvaGold rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
