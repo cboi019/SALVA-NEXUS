@@ -13,6 +13,7 @@ const mongoose = require('mongoose');
 const { Resend } = require('resend');
 const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
 const Approval = require('./models/Approval');
+const { encryptPrivateKey, decryptPrivateKey, hashPin, verifyPin } = require('./utils/encryption');
 
 // Initialize Resend and Gelato
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -953,6 +954,277 @@ app.get('/api/allowances-for/:address', async (req, res) => {
   } catch (error) {
     console.error("Critical Incoming Allowance Route Error:", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ===============================================
+// CHECK IF USER NEEDS TO SET PIN (After Registration/Login)
+// ===============================================
+app.get('/api/user/pin-status/:email', async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json({
+      hasPin: !!user.transactionPin,
+      pinSetupCompleted: user.pinSetupCompleted || false,
+      isLocked: user.accountLockedUntil && new Date(user.accountLockedUntil) > new Date(),
+      lockedUntil: user.accountLockedUntil
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to check PIN status" });
+  }
+});
+
+// ===============================================
+// SET TRANSACTION PIN (First Time Setup)
+// ===============================================
+app.post('/api/user/set-pin', async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+
+    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+      return res.status(400).json({ message: "PIN must be exactly 4 digits" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Check if PIN already exists
+    if (user.transactionPin) {
+      return res.status(400).json({ message: "PIN already set. Use reset-pin instead." });
+    }
+
+    // Hash the PIN for storage
+    const hashedPin = hashPin(pin);
+
+    // Encrypt the private key with the PIN
+    const encryptedKey = encryptPrivateKey(user.ownerPrivateKey, pin);
+
+    // Update user
+    user.transactionPin = hashedPin;
+    user.ownerPrivateKey = encryptedKey;
+    user.pinSetupCompleted = true;
+    // NO LOCKOUT for first-time setup
+    await user.save();
+
+    console.log(`✅ PIN set for user: ${email}`);
+    res.json({ success: true, message: "Transaction PIN set successfully!" });
+  } catch (error) {
+    console.error("❌ Set PIN error:", error);
+    res.status(500).json({ message: "Failed to set PIN" });
+  }
+});
+
+// ===============================================
+// VERIFY TRANSACTION PIN (Before Transactions)
+// ===============================================
+app.post('/api/user/verify-pin', async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.transactionPin) {
+      return res.status(400).json({ message: "No PIN set. Please set PIN first." });
+    }
+
+    // Verify PIN
+    const isValid = verifyPin(pin, user.transactionPin);
+
+    if (!isValid) {
+      return res.status(401).json({ success: false, message: "Invalid PIN" });
+    }
+
+    // Check if account is locked
+    if (user.accountLockedUntil && new Date(user.accountLockedUntil) > new Date()) {
+      const hoursLeft = Math.ceil((new Date(user.accountLockedUntil) - new Date()) / (1000 * 60 * 60));
+      return res.status(403).json({ 
+        message: `Account locked for ${hoursLeft} more hours due to recent security changes.`,
+        lockedUntil: user.accountLockedUntil
+      });
+    }
+
+    // Decrypt private key temporarily for transaction
+    try {
+      const decryptedKey = decryptPrivateKey(user.ownerPrivateKey, pin);
+      res.json({ 
+        success: true, 
+        privateKey: decryptedKey  // Send decrypted key ONLY after PIN verification
+      });
+    } catch (decryptError) {
+      return res.status(401).json({ success: false, message: "Invalid PIN or corrupted key" });
+    }
+  } catch (error) {
+    console.error("❌ Verify PIN error:", error);
+    res.status(500).json({ message: "Failed to verify PIN" });
+  }
+});
+
+// ===============================================
+// RESET TRANSACTION PIN (With OTP and 24HR Lockout)
+// ===============================================
+app.post('/api/user/reset-pin', async (req, res) => {
+  try {
+    const { email, newPin } = req.body;
+
+    // OTP should already be verified at this point (frontend handles OTP flow)
+    if (!otpStore[email] || !otpStore[email].verified) {
+      return res.status(401).json({ message: "Please verify OTP first" });
+    }
+
+    if (!newPin || newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+      return res.status(400).json({ message: "PIN must be exactly 4 digits" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Decrypt private key with OLD PIN first (if it was encrypted)
+    let privateKey = user.ownerPrivateKey;
+    if (user.transactionPin) {
+      // For users with existing PIN, we need the old PIN to decrypt
+      // But since they're resetting via OTP, we'll need to handle this differently
+      // For now, if they're resetting, assume they've lost access
+      // In production, you might want to add a backup recovery mechanism
+      try {
+        // Try to decrypt with a dummy attempt - if it fails, key is already plain
+        if (privateKey.includes(':')) {
+          throw new Error("Cannot decrypt old key without old PIN");
+        }
+      } catch (e) {
+        return res.status(400).json({ 
+          message: "Cannot reset PIN without old PIN. Contact support." 
+        });
+      }
+    }
+
+    // Hash new PIN and encrypt private key
+    const hashedPin = hashPin(newPin);
+    const encryptedKey = encryptPrivateKey(privateKey, newPin);
+
+    // Set 24-hour lockout
+    const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    user.transactionPin = hashedPin;
+    user.ownerPrivateKey = encryptedKey;
+    user.accountLockedUntil = lockoutTime;
+    await user.save();
+
+    delete otpStore[email];
+
+    console.log(`✅ PIN reset for user: ${email}, locked until: ${lockoutTime}`);
+    res.json({ 
+      success: true, 
+      message: "PIN reset successful. Account locked for 24 hours.",
+      lockedUntil: lockoutTime
+    });
+  } catch (error) {
+    console.error("❌ Reset PIN error:", error);
+    res.status(500).json({ message: "Failed to reset PIN" });
+  }
+});
+
+// ===============================================
+// UPDATE EMAIL (With 24HR Lockout)
+// ===============================================
+app.post('/api/user/update-email', async (req, res) => {
+  try {
+    const { oldEmail, newEmail } = req.body;
+
+    if (!otpStore[oldEmail] || !otpStore[oldEmail].verified) {
+      return res.status(401).json({ message: "Please verify OTP first" });
+    }
+
+    const user = await User.findOne({ email: oldEmail });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Check if new email already exists
+    const existingUser = await User.findOne({ email: newEmail });
+    if (existingUser) {
+      return res.status(400).json({ message: "Email already in use" });
+    }
+
+    // Set 24-hour lockout
+    const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    user.email = newEmail;
+    user.accountLockedUntil = lockoutTime;
+    await user.save();
+
+    delete otpStore[oldEmail];
+
+    res.json({ 
+      success: true, 
+      message: "Email updated. Account locked for 24 hours.",
+      lockedUntil: lockoutTime
+    });
+  } catch (error) {
+    console.error("❌ Update email error:", error);
+    res.status(500).json({ message: "Failed to update email" });
+  }
+});
+
+// ===============================================
+// UPDATE PASSWORD (With 24HR Lockout)
+// ===============================================
+app.post('/api/user/update-password', async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!otpStore[email] || !otpStore[email].verified) {
+      return res.status(401).json({ message: "Please verify OTP first" });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Set 24-hour lockout
+    const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    user.password = hashedPassword;
+    user.accountLockedUntil = lockoutTime;
+    await user.save();
+
+    delete otpStore[email];
+
+    res.json({ 
+      success: true, 
+      message: "Password updated. Account locked for 24 hours.",
+      lockedUntil: lockoutTime
+    });
+  } catch (error) {
+    console.error("❌ Update password error:", error);
+    res.status(500).json({ message: "Failed to update password" });
+  }
+});
+
+// ===============================================
+// UPDATE USERNAME (No lockout)
+// ===============================================
+app.post('/api/user/update-username', async (req, res) => {
+  try {
+    const { email, newUsername } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // Check if username already exists
+    const existingUser = await User.findOne({ username: newUsername });
+    if (existingUser && existingUser._id.toString() !== user._id.toString()) {
+      return res.status(400).json({ message: "Username already taken" });
+    }
+
+    user.username = newUsername;
+    await user.save();
+
+    res.json({ success: true, message: "Username updated successfully!" });
+  } catch (error) {
+    console.error("❌ Update username error:", error);
+    res.status(500).json({ message: "Failed to update username" });
   }
 });
 

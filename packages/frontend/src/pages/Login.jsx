@@ -74,57 +74,76 @@ const Login = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
-    setLoading(true);
+// ADD THIS TO Login.jsx - Modified handleSubmit function
 
-    if (!isLogin && regStep === 2) {
-      try {
-        const verifyRes = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: formData.email, code: otp })
-        });
-        if (!verifyRes.ok) {
-          setLoading(false);
-          return showMsg("Invalid or expired code", "error");
-        }
-      } catch (err) {
-        setLoading(false);
-        return showMsg("Verification error", "error");
-      }
-    }
+const handleSubmit = async (e) => {
+  if (e) e.preventDefault();
+  setLoading(true);
 
-    const endpoint = isLogin ? '/api/login' : '/api/register';
-    
+  if (!isLogin && regStep === 2) {
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const verifyRes = await fetch(`${API_BASE_URL}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({ email: formData.email, code: otp })
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('salva_user', JSON.stringify({
-          username: data.username,
-          safeAddress: data.safeAddress,
-          accountNumber: data.accountNumber,
-          ownerKey: data.ownerPrivateKey 
-        }));
-
-        showMsg(isLogin ? "Access Granted!" : "Wallet Deployed!");
-        setTimeout(() => navigate('/dashboard'), 1500);
-      } else {
-        showMsg(data.message || "Something went wrong", "error");
+      if (!verifyRes.ok) {
+        setLoading(false);
+        return showMsg("Invalid or expired code", "error");
       }
     } catch (err) {
-      showMsg("Backend offline", "error");
-    } finally {
       setLoading(false);
+      return showMsg("Verification error", "error");
     }
-  };
+  }
+
+  const endpoint = isLogin ? '/api/login' : '/api/register';
+  
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData)
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      localStorage.setItem('salva_user', JSON.stringify({
+        username: data.username,
+        email: formData.email, // Store email for PIN operations
+        safeAddress: data.safeAddress,
+        accountNumber: data.accountNumber,
+        ownerKey: data.ownerPrivateKey 
+      }));
+
+      showMsg(isLogin ? "Access Granted!" : "Wallet Deployed!");
+      
+      // NEW: Check if user needs to set PIN
+      try {
+        const pinStatusRes = await fetch(`${API_BASE_URL}/api/user/pin-status/${formData.email}`);
+        const pinStatus = await pinStatusRes.json();
+        
+        if (!pinStatus.hasPin && !isLogin) {
+          // New user without PIN - redirect to PIN setup
+          setTimeout(() => navigate('/set-transaction-pin'), 1500);
+        } else {
+          // Existing user or user with PIN - go to dashboard
+          setTimeout(() => navigate('/dashboard'), 1500);
+        }
+      } catch (pinCheckError) {
+        // If PIN check fails, default to dashboard
+        setTimeout(() => navigate('/dashboard'), 1500);
+      }
+    } else {
+      showMsg(data.message || "Something went wrong", "error");
+    }
+  } catch (err) {
+    showMsg("Backend offline", "error");
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (checkingAuth) {
     return (

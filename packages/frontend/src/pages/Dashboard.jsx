@@ -1,4 +1,4 @@
-// Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx 
+// Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx - PART 1
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -22,6 +22,17 @@ const Dashboard = () => {
   const [approvals, setApprovals] = useState([]);
   const [incomingAllowances, setIncomingAllowances] = useState([]); 
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
+  
+  // NEW PIN VERIFICATION STATE
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [transactionPin, setTransactionPin] = useState('');
+  const [pinAttempts, setPinAttempts] = useState(0);
+  const [pendingTransaction, setPendingTransaction] = useState(null);
+  const [decryptedPrivateKey, setDecryptedPrivateKey] = useState(null);
+  const [noPinWarning, setNoPinWarning] = useState(false);
+  const [isAccountLocked, setIsAccountLocked] = useState(false);
+  const [lockMessage, setLockMessage] = useState('');
+  
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,6 +57,34 @@ const Dashboard = () => {
       window.location.href = '/login';
     }
   }, []);
+
+  // Check PIN status and account lock on mount
+  useEffect(() => {
+    const checkAccountStatus = async () => {
+      if (user && user.email) {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/user/pin-status/${user.email}`);
+          const data = await res.json();
+          
+          if (!data.hasPin) {
+            setNoPinWarning(true);
+          }
+          
+          if (data.isLocked) {
+            setIsAccountLocked(true);
+            const hoursLeft = Math.ceil((new Date(data.lockedUntil) - new Date()) / (1000 * 60 * 60));
+            setLockMessage(`Account locked for ${hoursLeft} more hours`);
+          }
+        } catch (err) {
+          console.error('Failed to check account status');
+        }
+      }
+    };
+    
+    if (user) {
+      checkAccountStatus();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (notification.show) {
@@ -104,156 +143,306 @@ const Dashboard = () => {
 
   const formatNumber = (num) => parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// FIXED: Receipt generation with sender/receiver details
-const downloadReceipt = (e, tx) => {
-  e.stopPropagation();
-  const doc = new jsPDF();
-  const gold = [212, 175, 55];
-  const dark = [10, 10, 11];
-  const isReceived = tx.displayType === 'receive';
-  
-  doc.setFillColor(dark[0], dark[1], dark[2]);
-  doc.rect(0, 0, 210, 297, 'F');
-  doc.setDrawColor(gold[0], gold[1], gold[2]);
-  doc.setLineWidth(1);
-  doc.rect(10, 10, 190, 277);
-  doc.setTextColor(gold[0], gold[1], gold[2]);
-  doc.setFontSize(40);
-  doc.setFont("helvetica", "bold");
-  doc.text("SALVA", 105, 45, { align: "center" });
-  doc.setFontSize(10);
-  doc.setTextColor(255, 255, 255);
-  doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
-  doc.setDrawColor(255, 255, 255, 0.1);
-  doc.line(30, 65, 180, 65);
-  
-  // AMOUNT
-  doc.setFontSize(12);
-  doc.setTextColor(150, 150, 150);
-  doc.text("AMOUNT TRANSFERRED", 40, 90);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24);
-  doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
-  
-  // SENDER (FROM)
-  doc.setFontSize(12);
-  doc.setTextColor(150, 150, 150);
-  doc.text("FROM (SENDER)", 40, 125);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  const senderInfo = isReceived ? tx.displayPartner : (user.accountNumber || user.safeAddress);
-  doc.text(senderInfo, 40, 135);
-  
-  // RECIPIENT (TO)
-  doc.setFontSize(12);
-  doc.setTextColor(150, 150, 150);
-  doc.text("TO (RECIPIENT)", 40, 155);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  const recipientInfo = isReceived ? (user.accountNumber || user.safeAddress) : tx.displayPartner;
-  doc.text(recipientInfo, 40, 165);
-  
-  // DATE & TIME
-  doc.setFontSize(12);
-  doc.setTextColor(150, 150, 150);
-  doc.text("DATE & TIME", 40, 185);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(10);
-  doc.text(new Date(tx.date).toLocaleString(), 40, 195);
-  
-  // STATUS
-  doc.setFontSize(12);
-  doc.setTextColor(150, 150, 150);
-  doc.text("BLOCKCHAIN STATUS", 40, 215);
-  doc.setTextColor(gold[0], gold[1], gold[2]);
-  doc.setFontSize(14);
-  doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 227);
-  
-  // REFERENCE
-  doc.setFontSize(8);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`REF: ${tx._id || 'SALVA-TX'}`, 105, 270, { align: "center" });
-  
-  doc.save(`Salva_Receipt_${Date.now()}.pdf`);
-  showMsg("Professional receipt downloaded!");
-};
+  // Receipt generation with correct status and timestamp
+  const downloadReceipt = (e, tx) => {
+    e.stopPropagation();
+    const doc = new jsPDF();
+    const gold = [212, 175, 55];
+    const dark = [10, 10, 11];
+    const red = [239, 68, 68];
+    const isReceived = tx.displayType === 'receive';
+    const isSuccessful = tx.status === 'successful';
+    
+    doc.setFillColor(dark[0], dark[1], dark[2]);
+    doc.rect(0, 0, 210, 297, 'F');
+    doc.setDrawColor(gold[0], gold[1], gold[2]);
+    doc.setLineWidth(1);
+    doc.rect(10, 10, 190, 277);
+    doc.setTextColor(gold[0], gold[1], gold[2]);
+    doc.setFontSize(40);
+    doc.setFont("helvetica", "bold");
+    doc.text("SALVA", 105, 45, { align: "center" });
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
+    doc.setDrawColor(255, 255, 255, 0.1);
+    doc.line(30, 65, 180, 65);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(150, 150, 150);
+    doc.text("AMOUNT TRANSFERRED", 40, 90);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(150, 150, 150);
+    doc.text("FROM (SENDER)", 40, 125);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    const senderInfo = isReceived ? tx.displayPartner : (user.accountNumber || user.safeAddress);
+    doc.text(senderInfo, 40, 135);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(150, 150, 150);
+    doc.text("TO (RECIPIENT)", 40, 155);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    const recipientInfo = isReceived ? (user.accountNumber || user.safeAddress) : tx.displayPartner;
+    doc.text(recipientInfo, 40, 165);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(150, 150, 150);
+    doc.text("DATE & TIME", 40, 185);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    const date = new Date(tx.date);
+    const dateStr = date.toLocaleDateString();
+    const timeStr = date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    doc.text(`${dateStr} ${timeStr}`, 40, 195);
+    
+    doc.setFontSize(12);
+    doc.setTextColor(150, 150, 150);
+    doc.text("BLOCKCHAIN STATUS", 40, 215);
+    doc.setFontSize(14);
+    
+    if (isSuccessful) {
+      doc.setTextColor(gold[0], gold[1], gold[2]);
+      doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 227);
+    } else {
+      doc.setTextColor(red[0], red[1], red[2]);
+      doc.text("FAILED ON-CHAIN", 40, 227);
+    }
+    
+    doc.setFontSize(8);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`REF: ${tx._id || 'SALVA-TX'}`, 105, 270, { align: "center" });
+    
+    doc.save(`Salva_Receipt_${Date.now()}.pdf`);
+    showMsg("Professional receipt downloaded!");
+  };
 
-  const handleTransfer = async (e) => {
+  // NEW: Modified transaction handlers to check PIN first
+  const handleTransferClick = () => {
+    if (isAccountLocked) {
+      return showMsg(lockMessage, 'error');
+    }
+    if (noPinWarning) {
+      return;
+    }
+    setPendingTransaction('send');
+    setIsPinModalOpen(true);
+    setTransactionPin('');
+    setPinAttempts(0);
+  };
+
+  const handleApproveClick = (e) => {
     e.preventDefault();
+    if (isAccountLocked) {
+      return showMsg(lockMessage, 'error');
+    }
+    if (noPinWarning) {
+      return showMsg('Please set transaction PIN in Account Settings', 'error');
+    }
+    setPendingTransaction('approve');
+    setIsPinModalOpen(true);
+    setTransactionPin('');
+    setPinAttempts(0);
+  };
+
+  const handleTransferFromClick = (e) => {
+    e.preventDefault();
+    if (isAccountLocked) {
+      return showMsg(lockMessage, 'error');
+    }
+    if (noPinWarning) {
+      return showMsg('Please set transaction PIN in Account Settings', 'error');
+    }
+    setPendingTransaction('transferFrom');
+    setIsPinModalOpen(true);
+    setTransactionPin('');
+    setPinAttempts(0);
+  };
+
+  // NEW: Verify PIN and proceed with transaction
+  const verifyPinAndProceed = async () => {
+    if (transactionPin.length !== 4) {
+      return showMsg('PIN must be 4 digits', 'error');
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/user/verify-pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: user.email, 
+          pin: transactionPin 
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setDecryptedPrivateKey(data.privateKey);
+        setIsPinModalOpen(false);
+        
+        if (pendingTransaction === 'send') {
+          setIsSendOpen(true);
+          executeTransfer(data.privateKey);
+        } else if (pendingTransaction === 'approve') {
+          executeApproval(data.privateKey);
+        } else if (pendingTransaction === 'transferFrom') {
+          executeTransferFrom(data.privateKey);
+        }
+      } else {
+        setPinAttempts(prev => prev + 1);
+        
+        if (pinAttempts >= 3) {
+          showMsg('Too many failed attempts. Redirecting to settings...', 'error');
+          setTimeout(() => navigate('/account-settings'), 2000);
+        } else {
+          showMsg(`Invalid PIN. ${3 - pinAttempts} attempts remaining`, 'error');
+        }
+      }
+    } catch (err) {
+      showMsg('Network error', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // NEW: Execute actual transfer (called after PIN verification)
+  const executeTransfer = async (privateKey) => {
     if (amountError) return showMsg("Insufficient balance", "error");
-    if (!user.ownerKey) return showMsg("Private key missing. Please re-login.", "error");
+    
     setLoading(true);
     showMsg("Initiating blockchain transfer...", "info");
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userPrivateKey: user.ownerKey, safeAddress: user.safeAddress, toInput: transferData.to, amount: transferData.amount })
+        body: JSON.stringify({ 
+          userPrivateKey: privateKey,
+          safeAddress: user.safeAddress, 
+          toInput: transferData.to, 
+          amount: transferData.amount 
+        })
       });
+      
       const data = await response.json();
+      
       if (response.ok) {
         showMsg('Transfer Successful!');
         setIsSendOpen(false);
         setTransferData({ to: '', amount: '' });
-        setTimeout(() => { fetchBalance(user.safeAddress); fetchTransactions(user.safeAddress); }, 3500);
-      } else { showMsg(data.message || "Transfer failed", "error"); }
-    } catch (err) { showMsg("Network error. Is backend running?", "error"); }
-    finally { setLoading(false); }
+        setTimeout(() => { 
+          fetchBalance(user.safeAddress); 
+          fetchTransactions(user.safeAddress); 
+        }, 3500);
+      } else {
+        showMsg(data.message || "Transfer failed", "error");
+      }
+    } catch (err) {
+      showMsg("Network error", "error");
+    } finally {
+      setLoading(false);
+      setPendingTransaction(null);
+    }
   };
 
-  const handleApprove = async (e) => {
-    e.preventDefault();
+  // NEW: Execute approval (called after PIN verification)
+  const executeApproval = async (privateKey) => {
     setLoading(true);
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userPrivateKey: user.ownerKey, safeAddress: user.safeAddress, spenderInput: approveData.spender, amount: approveData.amount })
+        body: JSON.stringify({ 
+          userPrivateKey: privateKey, 
+          safeAddress: user.safeAddress, 
+          spenderInput: approveData.spender, 
+          amount: approveData.amount 
+        })
       });
+      
       if (response.ok) {
         showMsg("Approval updated on-chain!");
         setApproveData({ spender: '', amount: '' });
-        setTimeout(() => { fetchApprovals(user.safeAddress); fetchIncomingAllowances(user.safeAddress, true); }, 4000);
-      } else showMsg("Approval failed", "error");
-    } catch (err) { showMsg("Connection error", "error"); }
-    setLoading(false);
+        setTimeout(() => { 
+          fetchApprovals(user.safeAddress); 
+          fetchIncomingAllowances(user.safeAddress, true); 
+        }, 4000);
+      } else {
+        showMsg("Approval failed", "error");
+      }
+    } catch (err) {
+      showMsg("Connection error", "error");
+    } finally {
+      setLoading(false);
+      setPendingTransaction(null);
+    }
   };
 
-  const handleTransferFrom = async (e) => {
-    e.preventDefault();
+  // NEW: Execute transferFrom (called after PIN verification)
+  const executeTransferFrom = async (privateKey) => {
     setLoading(true);
+    
     try {
       const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userPrivateKey: user.ownerKey, safeAddress: user.safeAddress, fromInput: transferFromData.from, toInput: transferFromData.to, amount: transferFromData.amount })
+        body: JSON.stringify({ 
+          userPrivateKey: privateKey, 
+          safeAddress: user.safeAddress, 
+          fromInput: transferFromData.from, 
+          toInput: transferFromData.to, 
+          amount: transferFromData.amount 
+        })
       });
+      
       const result = await response.json();
+      
       if (response.ok) {
         showMsg("Pull request sent to relay!");
         setTransferFromData({ from: '', to: '', amount: '' });
-        setTimeout(() => { fetchBalance(user.safeAddress); fetchTransactions(user.safeAddress); fetchApprovals(user.safeAddress, true); fetchIncomingAllowances(user.safeAddress, true); }, 7000);
-      } else { showMsg(result.message || "TransferFrom REVERTED", "error"); }
-    } catch (err) { showMsg("Network Error: Pull failed", "error"); }
-    finally { setLoading(false); }
+        setTimeout(() => { 
+          fetchBalance(user.safeAddress); 
+          fetchTransactions(user.safeAddress); 
+          fetchApprovals(user.safeAddress, true); 
+          fetchIncomingAllowances(user.safeAddress, true); 
+        }, 7000);
+      } else {
+        showMsg(result.message || "TransferFrom REVERTED", "error");
+      }
+    } catch (err) {
+      showMsg("Network Error: Pull failed", "error");
+    } finally {
+      setLoading(false);
+      setPendingTransaction(null);
+    }
   };
 
-// ✅ FIXED: Autofill function - use matching types
-const handleAutofillFromAllowance = (allowance) => {
-  // Use the matching identifier types returned from backend
-  setTransferFromData({ 
-    from: allowance.allower,           // Owner's identifier (account number or address)
-    to: allowance.spenderDisplay,      // Spender's identifier (account number or address) 
-    amount: allowance.amount 
-  });
-  
-  showMsg("Form autofilled from allowance", "success");
-};
+  // Autofill function - use matching types
+  const handleAutofillFromAllowance = (allowance) => {
+    setTransferFromData({ 
+      from: allowance.allower,
+      to: allowance.spenderDisplay,
+      amount: allowance.amount 
+    });
+    
+    showMsg("Form autofilled from allowance", "success");
+  };
 
   if (!user) return null;
-
-  // ADD YOU RETURN FIXES HERE
-
+  
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
       <Stars />
@@ -279,7 +468,7 @@ const handleAutofillFromAllowance = (allowance) => {
             <span className="text-salvaGold text-xl sm:text-2xl font-black mt-1 sm:mt-0">NGNs</span>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-8 sm:mt-10">
-            <button onClick={() => setIsSendOpen(true)} className="bg-salvaGold hover:bg-yellow-600 transition-colors text-black font-black py-4 rounded-2xl shadow-lg shadow-salvaGold/20 text-sm sm:text-base">SEND</button>
+            <button onClick={handleTransferClick} className="bg-salvaGold hover:bg-yellow-600 transition-colors text-black font-black py-4 rounded-2xl shadow-lg shadow-salvaGold/20 text-sm sm:text-base">SEND</button>
             <button onClick={() => { navigator.clipboard.writeText(user.accountNumber); showMsg("Account number copied!"); }} className="border border-salvaGold/30 hover:bg-white/5 transition-all py-4 rounded-2xl font-bold text-sm sm:text-base">RECEIVE</button>
           </div>
         </div>
@@ -326,7 +515,7 @@ const handleAutofillFromAllowance = (allowance) => {
           <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
               <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Update Permission</h4>
-              <form onSubmit={handleApprove} className="space-y-4">
+              <form onSubmit={handleApproveClick} className="space-y-4">
                 <input required placeholder="Spender Account or Address" value={approveData.spender} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e) => setApproveData({...approveData, spender: e.target.value})} />
                 <input required placeholder="Amount to Limit" type="number" value={approveData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e) => setApproveData({...approveData, amount: e.target.value})} />
                 <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">{loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}</button>
@@ -363,7 +552,7 @@ const handleAutofillFromAllowance = (allowance) => {
           <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 min-h-[350px]">
               <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
-              <form onSubmit={handleTransferFrom} className="space-y-4">
+              <form onSubmit={handleTransferFromClick} className="space-y-4">
                 <input required placeholder="From (Account or Address)" value={transferFromData.from} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})} />
                 <input required placeholder="To (Account or Address)" value={transferFromData.to} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})} />
                 <input required placeholder="Amount" type="number" value={transferFromData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})} />
@@ -401,6 +590,100 @@ const handleAutofillFromAllowance = (allowance) => {
         )}
       </div>
 
+      {/* NEW: No PIN Warning Slide-in */}
+      <AnimatePresence>
+        {noPinWarning && (
+          <motion.div 
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-red-500 text-white p-6 rounded-l-3xl shadow-2xl max-w-sm"
+          >
+            <h4 className="font-black text-lg mb-2">🔐 Transaction PIN Required</h4>
+            <p className="text-sm mb-4">You must set a transaction PIN before performing any transactions.</p>
+            <div className="flex gap-2">
+              <button 
+                onClick={() => navigate('/account-settings')}
+                className="flex-1 bg-white text-red-500 py-2 rounded-xl font-bold text-sm"
+              >
+                Go to Settings
+              </button>
+              <button 
+                onClick={() => setNoPinWarning(false)}
+                className="px-4 bg-red-600 py-2 rounded-xl font-bold text-sm"
+              >
+                ✕
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* NEW: PIN Verification Modal */}
+      <AnimatePresence>
+        {isPinModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <motion.div 
+              onClick={() => !loading && setIsPinModalOpen(false)} 
+              className="absolute inset-0 bg-black/95 backdrop-blur-md" 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+            />
+            <motion.div 
+              onClick={(e) => e.stopPropagation()}
+              className="relative bg-white dark:bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-gray-200 dark:border-white/10 shadow-2xl" 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.95 }}
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-salvaGold/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-3xl">🔐</span>
+                </div>
+                <h3 className="text-2xl font-black mb-2">Enter Transaction PIN</h3>
+                <p className="text-sm opacity-60">Verify your identity to proceed</p>
+              </div>
+
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="\d{4}"
+                maxLength="4"
+                value={transactionPin}
+                onChange={(e) => setTransactionPin(e.target.value.replace(/\D/g, ''))}
+                placeholder="••••"
+                autoFocus
+                className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-center text-3xl tracking-[1em] font-black mb-6"
+              />
+
+              {pinAttempts > 0 && (
+                <p className="text-xs text-red-500 text-center mb-4 font-bold">
+                  ⚠️ {3 - pinAttempts} attempts remaining
+                </p>
+              )}
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setIsPinModalOpen(false)} 
+                  disabled={loading}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 font-bold hover:bg-gray-100 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={verifyPinAndProceed} 
+                  disabled={loading || transactionPin.length !== 4}
+                  className="flex-1 py-3 rounded-xl bg-salvaGold text-black font-bold hover:brightness-110 disabled:opacity-50"
+                >
+                  {loading ? 'VERIFYING...' : 'VERIFY'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
@@ -409,7 +692,7 @@ const handleAutofillFromAllowance = (allowance) => {
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden" />
               <h3 className="text-2xl sm:text-3xl font-black mb-1">Send NGNs</h3>
               <p className="text-[10px] text-salvaGold uppercase tracking-widest font-bold mb-8">Salva Secure Transfer</p>
-              <form onSubmit={handleTransfer} className="space-y-5">
+              <form onSubmit={(e) => { e.preventDefault(); executeTransfer(decryptedPrivateKey); }} className="space-y-5">
                 <div>
                   <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Recipient</label>
                   <input required type="text" placeholder="Enter Account Number or Address" value={transferData.to} onChange={(e) => setTransferData({ ...transferData, to: e.target.value })} className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm" />

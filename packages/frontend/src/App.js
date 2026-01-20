@@ -7,6 +7,8 @@ import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import Dashboard from './pages/Dashboard';
 import Transactions from './pages/Transactions';
+import SetTransactionPin from './pages/SetTransactionPin';
+import AccountSettings from './pages/AccountSettings';
 
 // Spinner Component for smooth transitions
 const LoadingSpinner = () => (
@@ -71,6 +73,8 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route path="/set-transaction-pin" element={<SetTransactionPin />} />
+            <Route path="/account-settings" element={<AccountSettings />} />
           </Routes>
         </main>
       </div>

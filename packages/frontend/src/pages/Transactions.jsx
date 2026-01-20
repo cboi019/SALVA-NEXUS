@@ -79,12 +79,14 @@ const Transactions = () => {
 
   const formatNumber = (num) => parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// FIXED: Receipt generation in Transactions.jsx with sender/receiver details
+// FIXED: Receipt generation in Transactions.jsx with correct status and timestamp
 const downloadReceipt = (tx) => {
   const doc = new jsPDF();
   const gold = [212, 175, 55];
   const dark = [10, 10, 11];
+  const red = [239, 68, 68];
   const isReceived = tx.displayType === 'receive';
+  const isSuccessful = tx.status === 'successful';
 
   doc.setFillColor(dark[0], dark[1], dark[2]);
   doc.rect(0, 0, 210, 297, 'F');
@@ -127,21 +129,34 @@ const downloadReceipt = (tx) => {
   const recipientInfo = isReceived ? (user.accountNumber || user.safeAddress) : tx.displayPartner;
   doc.text(recipientInfo, 40, 165);
   
-  // DATE & TIME
+  // DATE & TIME - FIXED: Only show HH:MM AM/PM
   doc.setFontSize(12);
   doc.setTextColor(150, 150, 150);
   doc.text("DATE & TIME", 40, 185);
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(10);
-  doc.text(new Date(tx.date).toLocaleString(), 40, 195);
+  const date = new Date(tx.date);
+  const dateStr = date.toLocaleDateString();
+  const timeStr = date.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: true 
+  });
+  doc.text(`${dateStr} ${timeStr}`, 40, 195);
   
-  // STATUS
+  // STATUS - FIXED: Show actual status
   doc.setFontSize(12);
   doc.setTextColor(150, 150, 150);
   doc.text("BLOCKCHAIN STATUS", 40, 215);
-  doc.setTextColor(gold[0], gold[1], gold[2]);
   doc.setFontSize(14);
-  doc.text(tx.status.toUpperCase(), 40, 227);
+  
+  if (isSuccessful) {
+    doc.setTextColor(gold[0], gold[1], gold[2]);
+    doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 227);
+  } else {
+    doc.setTextColor(red[0], red[1], red[2]);
+    doc.text("FAILED ON-CHAIN", 40, 227);
+  }
   
   // REFERENCE
   doc.setFontSize(8);

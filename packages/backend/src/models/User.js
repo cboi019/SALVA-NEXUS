@@ -37,6 +37,19 @@ const UserSchema = new mongoose.Schema({
         type: String, 
         required: true 
     },
+    // NEW FIELDS FOR TRANSACTION PIN SYSTEM
+    transactionPin: {
+        type: String,
+        default: null  // null = no PIN set yet
+    },
+    accountLockedUntil: {
+        type: Date,
+        default: null  // null = not locked
+    },
+    pinSetupCompleted: {
+        type: Boolean,
+        default: false  // Track if user completed initial PIN setup
+    },
     createdAt: { 
         type: Date, 
         default: Date.now,
