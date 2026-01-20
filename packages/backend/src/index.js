@@ -29,6 +29,9 @@ const relay = new GelatoRelay();
 
 const app = express();
 
+// ✅ Trust proxy - Required for Render/Heroku/behind load balancers
+app.set('trust proxy', 1);
+
 // ===============================================
 // SECURITY: Helmet (Security Headers)
 // ===============================================
