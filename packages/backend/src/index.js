@@ -838,7 +838,7 @@ app.post('/api/approve', async (req, res) => {
 });
 
 // ===============================================
-// TRANSACTIONS
+// TRANSACTIONS.
 // ===============================================
 app.get('/api/transactions/:address', async (req, res) => {
   try {
