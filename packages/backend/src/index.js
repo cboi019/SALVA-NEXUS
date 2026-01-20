@@ -19,7 +19,6 @@ const crypto = require('crypto');
 // ===============================================
 // SECURITY PACKAGES
 // ===============================================
-const mongoSanitize = require('express-mongo-sanitize');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const validator = require('validator');
@@ -53,10 +52,30 @@ app.use(helmet({
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
 
-// ===============================================
-// SECURITY: MongoDB Injection Protection
-// ===============================================
-app.use(mongoSanitize());  // ✅ Use default config - works with all Express versions
+// Manual MongoDB injection protection
+function sanitizeObject(obj) {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  
+  const sanitized = Array.isArray(obj) ? [] : {};
+  
+  for (const key in obj) {
+    // Remove keys starting with $ or containing .
+    if (key.startsWith('$') || key.includes('.')) continue;
+    
+    sanitized[key] = typeof obj[key] === 'object' 
+      ? sanitizeObject(obj[key]) 
+      : obj[key];
+  }
+  
+  return sanitized;
+}
+
+// Apply to all routes
+app.use((req, res, next) => {
+  if (req.body) req.body = sanitizeObject(req.body);
+  if (req.params) req.params = sanitizeObject(req.params);
+  next();
+});
 
 // ===============================================
 // SECURITY: CORS (Environment-Based)
