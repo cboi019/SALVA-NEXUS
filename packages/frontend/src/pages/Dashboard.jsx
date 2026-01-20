@@ -1,4 +1,4 @@
-// Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx - PART 1
+// Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx - PART 1 (FIXED)
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +23,7 @@ const Dashboard = () => {
   const [incomingAllowances, setIncomingAllowances] = useState([]); 
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
   
-  // NEW PIN VERIFICATION STATE
+  // PIN VERIFICATION STATE
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [transactionPin, setTransactionPin] = useState('');
   const [pinAttempts, setPinAttempts] = useState(0);
@@ -61,9 +61,11 @@ const Dashboard = () => {
   // Check PIN status and account lock on mount
   useEffect(() => {
     const checkAccountStatus = async () => {
-      if (user && user.email) {
+      if (user && (user.email || user.username)) {
         try {
-          const res = await fetch(`${API_BASE_URL}/api/user/pin-status/${user.email}`);
+          // ✅ FIX: Use email if available, fallback to username
+          const identifier = user.email || user.username;
+          const res = await fetch(`${API_BASE_URL}/api/user/pin-status/${identifier}`);
           const data = await res.json();
           
           if (!data.hasPin) {
@@ -226,49 +228,59 @@ const Dashboard = () => {
     showMsg("Professional receipt downloaded!");
   };
 
-  // NEW: Modified transaction handlers to check PIN first
+  // ✅ FIX 1: SEND button opens form first (not PIN modal)
   const handleTransferClick = () => {
     if (isAccountLocked) {
       return showMsg(lockMessage, 'error');
     }
+    
     if (noPinWarning) {
-      return;
+      return; // Warning is already showing
     }
-    setPendingTransaction('send');
-    setIsPinModalOpen(true);
-    setTransactionPin('');
-    setPinAttempts(0);
+    
+    // Open send form FIRST (PIN will be asked on submit)
+    setIsSendOpen(true);
   };
 
+  // ✅ FIX 2: Approve asks for PIN immediately (form already visible)
   const handleApproveClick = (e) => {
     e.preventDefault();
+    
     if (isAccountLocked) {
       return showMsg(lockMessage, 'error');
     }
+    
     if (noPinWarning) {
       return showMsg('Please set transaction PIN in Account Settings', 'error');
     }
+    
+    // Ask for PIN immediately for approve (since form is already visible)
     setPendingTransaction('approve');
     setIsPinModalOpen(true);
     setTransactionPin('');
     setPinAttempts(0);
   };
 
+  // ✅ FIX 3: TransferFrom asks for PIN immediately (form already visible)
   const handleTransferFromClick = (e) => {
     e.preventDefault();
+    
     if (isAccountLocked) {
       return showMsg(lockMessage, 'error');
     }
+    
     if (noPinWarning) {
       return showMsg('Please set transaction PIN in Account Settings', 'error');
     }
+    
+    // Ask for PIN immediately for transferFrom (since form is already visible)
     setPendingTransaction('transferFrom');
     setIsPinModalOpen(true);
     setTransactionPin('');
     setPinAttempts(0);
   };
 
-  // NEW: Verify PIN and proceed with transaction
+  // Verify PIN and proceed with transaction
   const verifyPinAndProceed = async () => {
     if (transactionPin.length !== 4) {
       return showMsg('PIN must be 4 digits', 'error');
@@ -277,11 +289,14 @@ const Dashboard = () => {
     setLoading(true);
 
     try {
+      // ✅ FIX: Use email if available, fallback to username
+      const identifier = user.email || user.username;
+      
       const response = await fetch(`${API_BASE_URL}/api/user/verify-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          email: user.email, 
+          email: identifier, 
           pin: transactionPin 
         })
       });
@@ -293,7 +308,7 @@ const Dashboard = () => {
         setIsPinModalOpen(false);
         
         if (pendingTransaction === 'send') {
-          setIsSendOpen(true);
+          // Don't open send form again, it's already open
           executeTransfer(data.privateKey);
         } else if (pendingTransaction === 'approve') {
           executeApproval(data.privateKey);
@@ -303,11 +318,11 @@ const Dashboard = () => {
       } else {
         setPinAttempts(prev => prev + 1);
         
-        if (pinAttempts >= 3) {
+        if (pinAttempts >= 2) { // Changed from >= 3 to >= 2 (on 3rd failed attempt)
           showMsg('Too many failed attempts. Redirecting to settings...', 'error');
           setTimeout(() => navigate('/account-settings'), 2000);
         } else {
-          showMsg(`Invalid PIN. ${3 - pinAttempts} attempts remaining`, 'error');
+          showMsg(`Invalid PIN. ${3 - pinAttempts - 1} attempts remaining`, 'error');
         }
       }
     } catch (err) {
@@ -317,7 +332,7 @@ const Dashboard = () => {
     }
   };
 
-  // NEW: Execute actual transfer (called after PIN verification)
+  // Execute actual transfer (called after PIN verification)
   const executeTransfer = async (privateKey) => {
     if (amountError) return showMsg("Insufficient balance", "error");
     
@@ -357,7 +372,7 @@ const Dashboard = () => {
     }
   };
 
-  // NEW: Execute approval (called after PIN verification)
+  // Execute approval (called after PIN verification)
   const executeApproval = async (privateKey) => {
     setLoading(true);
     
@@ -391,7 +406,7 @@ const Dashboard = () => {
     }
   };
 
-  // NEW: Execute transferFrom (called after PIN verification)
+  // Execute transferFrom (called after PIN verification)
   const executeTransferFrom = async (privateKey) => {
     setLoading(true);
     
@@ -442,7 +457,7 @@ const Dashboard = () => {
   };
 
   if (!user) return null;
-  
+
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
       <Stars />
@@ -692,7 +707,7 @@ const Dashboard = () => {
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden" />
               <h3 className="text-2xl sm:text-3xl font-black mb-1">Send NGNs</h3>
               <p className="text-[10px] text-salvaGold uppercase tracking-widest font-bold mb-8">Salva Secure Transfer</p>
-              <form onSubmit={(e) => { e.preventDefault(); executeTransfer(decryptedPrivateKey); }} className="space-y-5">
+              <form onSubmit={(e) => { e.preventDefault(); setPendingTransaction('send'); setIsPinModalOpen(true); setTransactionPin(''); setPinAttempts(0);}} className="space-y-5">
                 <div>
                   <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Recipient</label>
                   <input required type="text" placeholder="Enter Account Number or Address" value={transferData.to} onChange={(e) => setTransferData({ ...transferData, to: e.target.value })} className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm" />

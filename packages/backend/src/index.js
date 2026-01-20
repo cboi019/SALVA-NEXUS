@@ -15,6 +15,7 @@ const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
 const Approval = require('./models/Approval');
 const { encryptPrivateKey, decryptPrivateKey, hashPin, verifyPin } = require('./utils/encryption');
 
+
 // Initialize Resend and Gelato
 const resend = new Resend(process.env.RESEND_API_KEY);
 const relay = new GelatoRelay();
@@ -718,9 +719,6 @@ app.get('/api/transactions/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM (Using Registry Contract ONLY)
-// ===============================================
-// ===============================================
 // TRANSFER FROM (FIXED - Save failed transactions)
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
@@ -957,6 +955,8 @@ app.get('/api/allowances-for/:address', async (req, res) => {
   }
 });
 
+// ADD TO index.js - PIN MANAGEMENT ROUTES
+
 // ===============================================
 // CHECK IF USER NEEDS TO SET PIN (After Registration/Login)
 // ===============================================
@@ -977,7 +977,7 @@ app.get('/api/user/pin-status/:email', async (req, res) => {
 });
 
 // ===============================================
-// SET TRANSACTION PIN (First Time Setup)
+// SET TRANSACTION PIN (First Time Setup) - FIXED
 // ===============================================
 app.post('/api/user/set-pin', async (req, res) => {
   try {
@@ -987,8 +987,17 @@ app.post('/api/user/set-pin', async (req, res) => {
       return res.status(400).json({ message: "PIN must be exactly 4 digits" });
     }
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // ✅ FIX: Try to find user by email OR username (fallback)
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // If not found by email, try username (for old users)
+      user = await User.findOne({ username: email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     // Check if PIN already exists
     if (user.transactionPin) {
@@ -1008,7 +1017,7 @@ app.post('/api/user/set-pin', async (req, res) => {
     // NO LOCKOUT for first-time setup
     await user.save();
 
-    console.log(`✅ PIN set for user: ${email}`);
+    console.log(`✅ PIN set for user: ${user.email || user.username}`);
     res.json({ success: true, message: "Transaction PIN set successfully!" });
   } catch (error) {
     console.error("❌ Set PIN error:", error);
@@ -1017,14 +1026,22 @@ app.post('/api/user/set-pin', async (req, res) => {
 });
 
 // ===============================================
-// VERIFY TRANSACTION PIN (Before Transactions)
+// VERIFY TRANSACTION PIN - FIXED
 // ===============================================
 app.post('/api/user/verify-pin', async (req, res) => {
   try {
     const { email, pin } = req.body;
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    // ✅ FIX: Try email first, then username
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      user = await User.findOne({ username: email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     if (!user.transactionPin) {
       return res.status(400).json({ message: "No PIN set. Please set PIN first." });
@@ -1051,7 +1068,7 @@ app.post('/api/user/verify-pin', async (req, res) => {
       const decryptedKey = decryptPrivateKey(user.ownerPrivateKey, pin);
       res.json({ 
         success: true, 
-        privateKey: decryptedKey  // Send decrypted key ONLY after PIN verification
+        privateKey: decryptedKey
       });
     } catch (decryptError) {
       return res.status(401).json({ success: false, message: "Invalid PIN or corrupted key" });
