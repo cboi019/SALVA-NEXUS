@@ -14,29 +14,197 @@ const { Resend } = require('resend');
 const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
 const Approval = require('./models/Approval');
 const { encryptPrivateKey, decryptPrivateKey, hashPin, verifyPin } = require('./utils/encryption');
+const crypto = require('crypto');
 
+// ===============================================
+// SECURITY PACKAGES
+// ===============================================
+const mongoSanitize = require('express-mongo-sanitize');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const validator = require('validator');
 
-// Initialize Resend and Gelato
+// Initialize services
 const resend = new Resend(process.env.RESEND_API_KEY);
 const relay = new GelatoRelay();
 
 const app = express();
+
+// ===============================================
+// SECURITY: Helmet (Security Headers)
+// ===============================================
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://api.anthropic.com", process.env.BASE_SEPOLIA_RPC_URL],
+    },
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
+}));
+
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true }));
+
+// ===============================================
+// SECURITY: MongoDB Injection Protection
+// ===============================================
+app.use(mongoSanitize({
+  replaceWith: '_',
+  onSanitize: ({ req, key }) => {
+    console.warn(`⚠️ Sanitized input detected: ${key}`);
+  }
+}));
+
+// ===============================================
+// SECURITY: CORS (Environment-Based)
+// ===============================================
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [
+      'https://salva-nexus.org',
+      'https://www.salva-nexus.org',
+      'https://salva-nexus.onrender.com'
+    ]
+  : [
+      'https://salva-nexus.org',
+      'https://www.salva-nexus.org',
+      'https://salva-nexus.onrender.com',
+      'http://localhost:3000',
+      'http://localhost:5173'
+    ];
+
 app.use(cors({
-  origin: [
-    'https://salva-nexus.org',
-    'https://www.salva-nexus.org',
-    'https://salva-nexus.onrender.com', 
-    'http://localhost:3000',
-    'http://localhost:5173'
-  ],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`⚠️ CORS blocked: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   credentials: true
 }));
 
-// Temporary storage for OTPs
+// ===============================================
+// SECURITY: Rate Limiters
+// ===============================================
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: 'Too many authentication attempts. Please try again in 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    console.warn(`⚠️ Rate limit exceeded for IP: ${req.ip} on ${req.path}`);
+    res.status(429).json({ 
+      message: 'Too many attempts. Please try again in 15 minutes.' 
+    });
+  }
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests. Please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/', generalLimiter);
+
+// ===============================================
+// SECURITY: Input Validation
+// ===============================================
+function sanitizeEmail(email) {
+  if (typeof email !== 'string') {
+    throw new Error('Invalid email format');
+  }
+  const sanitized = email.trim().toLowerCase();
+  if (!validator.isEmail(sanitized)) {
+    throw new Error('Invalid email format');
+  }
+  return sanitized;
+}
+
+function validateRegistration(req, res, next) {
+  try {
+    const { username, email, password } = req.body;
+    
+    const sanitizedEmail = sanitizeEmail(email);
+    req.body.email = sanitizedEmail;
+    
+    if (!username || !/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+      return res.status(400).json({ 
+        message: 'Username must be 3-20 alphanumeric characters' 
+      });
+    }
+    
+    if (!password || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      return res.status(400).json({ 
+        message: 'Password must be at least 8 characters with uppercase, lowercase, and number' 
+      });
+    }
+    
+    next();
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}
+
+function validateAmount(amount) {
+  const num = parseFloat(amount);
+  if (isNaN(num) || num <= 0 || num > 1000000000) {
+    throw new Error('Invalid amount');
+  }
+  return num;
+}
+
+function validatePin(pin) {
+  if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+    throw new Error('PIN must be exactly 4 digits');
+  }
+  return true;
+}
+
+// ===============================================
+// SECURITY: Error Handler
+// ===============================================
+function handleError(error, res, userMessage = 'An error occurred') {
+  console.error('Error:', error);
+  
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(500).json({ message: userMessage });
+  } else {
+    return res.status(500).json({ 
+      message: userMessage, 
+      error: error.message,
+      stack: error.stack
+    });
+  }
+}
+
+// ===============================================
+// OTP Storage with Auto-Cleanup
+// ===============================================
 const otpStore = {};
+
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(otpStore).forEach(email => {
+    if (otpStore[email] && otpStore[email].expires < now) {
+      delete otpStore[email];
+      console.log(`🧹 Cleaned up expired OTP for: ${email}`);
+    }
+  });
+}, 5 * 60 * 1000);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI)
@@ -44,7 +212,7 @@ mongoose.connect(process.env.MONGO_URI)
   .catch(err => console.error('❌ MongoDB Connection Failed:', err));
 
 // ===============================================
-// HELPER: 8-Second Delay Before Blockchain Calls
+// HELPERS
 // ===============================================
 async function delayBeforeBlockchain(message = "Preparing transaction...") {
   console.log(`⏳ ${message} (8-second safety delay)`);
@@ -52,9 +220,6 @@ async function delayBeforeBlockchain(message = "Preparing transaction...") {
   console.log(`✅ Delay complete, executing blockchain call...`);
 }
 
-// ===============================================
-// HELPER: Check Gelato Task Status (REVERT DETECTION)
-// ===============================================
 async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
   console.log(`🔍 Polling Gelato task status for: ${taskId}`);
   
@@ -107,21 +272,38 @@ async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
   return { success: false, status: 'failed', reason: 'Transaction verification timeout' };
 }
 
+async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (i === maxRetries - 1) throw error;
+      console.log(`⚠️ RPC call failed, retrying (${i + 1}/${maxRetries})...`);
+      await new Promise(resolve => setTimeout(resolve, delay * (i + 1))); 
+    }
+  }
+}
+
+const { 
+  isAccountNumber, 
+  getAccountNumberFromAddress, 
+  resolveToAddress 
+} = require('./services/registryResolver');
+
 // ===============================================
-// AUTH & EMAIL ROUTES
+// AUTH ROUTES
 // ===============================================
-
-app.post('/api/auth/send-otp', async (req, res) => {
-  const { email } = req.body;
-  if (!email) return res.status(400).json({ message: "Email required" });
-
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  otpStore[email] = {
-    code: otp,
-    expires: Date.now() + 600000
-  };
-
+app.post('/api/auth/send-otp', authLimiter, async (req, res) => {
   try {
+    const email = sanitizeEmail(req.body.email);
+    
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpStore[email] = {
+      code: otp,
+      expires: Date.now() + 600000,
+      verified: false
+    };
+
     const data = await resend.emails.send({
       from: 'Salva <no-reply@salva-nexus.org>',
       to: email,
@@ -137,79 +319,87 @@ app.post('/api/auth/send-otp', async (req, res) => {
         </div>
       `
     });
+    
     console.log("📧 OTP sent successfully via Resend:", data.id);
     res.json({ message: 'OTP sent successfully' });
+    
   } catch (err) {
     console.error("❌ RESEND FAIL:", err);
-    res.status(500).json({ 
-      message: 'Email service currently unavailable', 
-      details: err.message 
-    });
+    return handleError(err, res, 'Email service currently unavailable');
   }
 });
 
-app.post('/api/auth/verify-otp', (req, res) => {
-  const { email, code } = req.body;
-  const record = otpStore[email];
-
-  if (!record || record.code !== code || Date.now() > record.expires) {
-    return res.status(400).json({ message: 'Invalid or expired code' });
-  }
-
-  record.verified = true; 
-  res.json({ success: true });
-});
-
-app.post('/api/auth/reset-password', async (req, res) => {
-  const { email, newPassword } = req.body;
-  if (!otpStore[email] || !otpStore[email].verified) {
-    return res.status(401).json({ message: "Unauthorized. Verify OTP first." });
-  }
+app.post('/api/auth/verify-otp', authLimiter, (req, res) => {
   try {
+    const { email, code } = req.body;
+    const sanitizedEmail = sanitizeEmail(email);
+    const record = otpStore[sanitizedEmail];
+
+    if (!record) {
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
+    
+    if (Date.now() > record.expires) {
+      delete otpStore[sanitizedEmail];
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
+    
+    // Constant-time comparison
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(record.code),
+      Buffer.from(String(code))
+    );
+    
+    if (!isValid) {
+      return res.status(400).json({ message: 'Invalid or expired code' });
+    }
+
+    record.verified = true;
+    res.json({ success: true });
+    
+  } catch (error) {
+    return handleError(error, res, 'Verification failed');
+  }
+});
+
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    const sanitizedEmail = sanitizeEmail(email);
+    
+    if (!otpStore[sanitizedEmail] || !otpStore[sanitizedEmail].verified) {
+      return res.status(401).json({ message: "Unauthorized. Verify OTP first." });
+    }
+    
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+      return res.status(400).json({ 
+        message: 'Password must be at least 8 characters with uppercase, lowercase, and number' 
+      });
+    }
+    
     const hashedPassword = await bcrypt.hash(newPassword, 10);
     const user = await User.findOneAndUpdate(
-      { email: email },
+      { email: sanitizedEmail },
       { password: hashedPassword },
       { new: true }
     );
-    if (!user) return res.status(404).json({ message: "User not found" });
-    delete otpStore[email];
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    delete otpStore[sanitizedEmail];
     res.json({ success: true, message: "Password updated successfully" });
+    
   } catch (err) {
-    res.status(500).json({ message: "Database update failed" });
+    return handleError(err, res, 'Password reset failed');
   }
 });
-
-// ===============================================
-// HELPER: Retry RPC Calls
-// ===============================================
-async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (i === maxRetries - 1) throw error;
-      console.log(`⚠️ RPC call failed, retrying (${i + 1}/${maxRetries})...`);
-      await new Promise(resolve => setTimeout(resolve, delay * (i + 1))); 
-    }
-  }
-}
-
-// ===============================================
-// HELPER: Resolve User Data (Account Number or Address)
-// ===============================================
-async function resolveUser(input) {
-  if (isAccountNumber(input)) {
-    return await User.findOne({ accountNumber: input });
-  } else {
-    return await User.findOne({ safeAddress: input.toLowerCase() });
-  }
-}
 
 // ===============================================
 // REGISTRATION
 // ===============================================
-app.post('/api/register', async (req, res) => {
+app.post('/api/register', authLimiter, validateRegistration, async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
@@ -262,21 +452,27 @@ app.post('/api/register', async (req, res) => {
 
   } catch (error) {
     console.error("❌ Registration failed:", error);
-    res.status(500).json({ message: "Registration failed", error: error.message });
+    return handleError(error, res, 'Registration failed');
   }
 });
 
 // ===============================================
 // LOGIN
 // ===============================================
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = sanitizeEmail(req.body.email);
+    const { password } = req.body;
+    
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+    if (!isMatch) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
 
     res.json({
       username: user.username,
@@ -285,16 +481,20 @@ app.post('/api/login', async (req, res) => {
       ownerPrivateKey: user.ownerPrivateKey
     });
   } catch (error) {
-    res.status(500).json({ message: "Login failed" });
+    return handleError(error, res, 'Login failed');
   }
 });
 
 // ===============================================
-// GET BALANCE
+// BALANCE
 // ===============================================
 app.get('/api/balance/:address', async (req, res) => {
   try {
     const { address } = req.params;
+    
+    if (!ethers.isAddress(address)) {
+      return res.status(400).json({ message: 'Invalid address format' });
+    }
     
     const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(
@@ -317,11 +517,16 @@ app.get('/api/balance/:address', async (req, res) => {
 });
 
 // ===============================================
-// FIXED GET APPROVALS - Display What Approver Used
+// APPROVALS
 // ===============================================
 app.get('/api/approvals/:address', async (req, res) => {
   try {
     const ownerAddress = req.params.address.toLowerCase();
+    
+    if (!ethers.isAddress(ownerAddress)) {
+      return res.status(400).json({ message: 'Invalid address format' });
+    }
+    
     const savedApprovals = await Approval.find({ owner: ownerAddress });
     
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
@@ -329,18 +534,15 @@ app.get('/api/approvals/:address', async (req, res) => {
     
     const liveApprovals = await Promise.all(savedApprovals.map(async (app) => {
       try {
-        // Use the stored address for blockchain query
         const spenderAddress = app.spender;
         const liveAllowanceWei = await tokenContract.allowance(ownerAddress, spenderAddress);
         const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
         
-        // Delete if allowance is 0
         if (parseFloat(liveAmount) <= 0) {
           await Approval.deleteOne({ _id: app._id });
           return null; 
         }
 
-        // Update amount if changed
         if (liveAmount !== app.amount) {
           await Approval.updateOne(
             { _id: app._id },
@@ -349,24 +551,21 @@ app.get('/api/approvals/:address', async (req, res) => {
           app.amount = liveAmount;
         }
 
-        // ✅ FIXED: Display based on what approver originally inputted
         let displaySpender;
         
         if (app.spenderInputType === 'accountNumber') {
-          // Approver used account number, so display account number
           displaySpender = app.spenderInput;
         } else {
-          // Approver used address, so display address
           displaySpender = spenderAddress;
         }
         
         return {
           _id: app._id,
-          spender: spenderAddress,          // Actual address for operations
-          displaySpender: displaySpender,   // ✅ What to show in UI (matching input type)
+          spender: spenderAddress,
+          displaySpender: displaySpender,
           amount: app.amount,
           date: app.date,
-          inputType: app.spenderInputType   // For debugging/reference
+          inputType: app.spenderInputType
         };
       } catch (err) {
         console.error(`Sync failed for ${app.spender}:`, err.message);
@@ -377,67 +576,65 @@ app.get('/api/approvals/:address', async (req, res) => {
     res.json(liveApprovals.filter(app => app !== null));
   } catch (error) {
     console.error("Critical Approval Route Error:", error);
-    res.status(500).json({ error: error.message });
+    return handleError(error, res, 'Failed to fetch approvals');
   }
 });
 
 // ===============================================
-// FIXED GET INCOMING ALLOWANCES - Display Matching Type
+// INCOMING ALLOWANCES
 // ===============================================
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
     const userAddress = req.params.address.toLowerCase();
     
+    if (!ethers.isAddress(userAddress)) {
+      return res.status(400).json({ message: 'Invalid address format' });
+    }
+    
     const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
     const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
     
-    // Find all approvals where this user is the spender
     const allApprovals = await Approval.find({});
-    
     const relevantApprovals = [];
     
     for (const app of allApprovals) {
       try {
-        const spenderAddress = app.spender.toLowerCase();
+        let spenderAddress;
+        try {
+          spenderAddress = await resolveToAddress(app.spender);
+        } catch (e) {
+          spenderAddress = app.spender.toLowerCase();
+        }
         
-        // Check if this approval's spender matches current user
-        if (spenderAddress === userAddress) {
-          // Check live allowance amount
+        if (spenderAddress.toLowerCase() === userAddress.toLowerCase()) {
           const liveAllowanceWei = await tokenContract.allowance(app.owner, userAddress);
           const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
           
           if (parseFloat(liveAmount) > 0) {
-            // Update amount if changed
             if (liveAmount !== app.amount) {
               await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
             }
             
-            // ✅ FIXED: Display based on what approver originally inputted
-            let ownerDisplay;
-            let spenderDisplay;
+            const approverUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
+            let ownerDisplay, spenderDisplay;
             
-            if (app.spenderInputType === 'accountNumber') {
-              // Approver used account number for spender, so use account numbers
-              // Get owner's account number
-              const ownerAccountNumber = await getAccountNumberFromAddress(app.owner);
-              ownerDisplay = ownerAccountNumber || app.owner; // Fallback to address
-              spenderDisplay = app.spenderInput; // What approver inputted
+            if (approverUsedAccountNumber) {
+              ownerDisplay = await getAccountNumberFromAddress(app.owner);
+              if (!ownerDisplay) ownerDisplay = app.owner;
+              spenderDisplay = app.displaySpender || app.spender;
             } else {
-              // Approver used address for spender, so use addresses
               ownerDisplay = app.owner;
               spenderDisplay = userAddress;
             }
             
             relevantApprovals.push({
-              allower: ownerDisplay,              // ✅ FROM field - owner's identifier
-              allowerAddress: app.owner,          // Actual address for backend
-              spenderDisplay: spenderDisplay,     // ✅ TO field - spender's identifier
+              allower: ownerDisplay,
+              allowerAddress: app.owner,
+              spenderDisplay: spenderDisplay,
               amount: liveAmount,
-              date: app.date,
-              inputType: app.spenderInputType     // For debugging
+              date: app.date
             });
           } else {
-            // Remove if allowance is 0
             await Approval.deleteOne({ _id: app._id });
           }
         }
@@ -449,28 +646,20 @@ app.get('/api/allowances-for/:address', async (req, res) => {
     res.json(relevantApprovals);
   } catch (error) {
     console.error("Critical Incoming Allowance Route Error:", error);
-    res.status(500).json({ error: error.message });
+    return handleError(error, res, 'Failed to fetch allowances');
   }
 });
 
 // ===============================================
-// TRANSFER (Using Registry Contract ONLY)
-// ===============================================
-const { 
-  isAccountNumber, 
-  getAccountNumberFromAddress, 
-  resolveToAddress 
-} = require('./services/registryResolver');
-
-// ===============================================
-// TRANSFER (FIXED - Save failed transactions)
+// TRANSFER
 // ===============================================
 app.post('/api/transfer', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, toInput, amount } = req.body;
+    
+    validateAmount(amount);
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Resolve recipient address using Registry
     let recipientAddress;
     try {
       recipientAddress = await resolveToAddress(toInput);
@@ -478,10 +667,7 @@ app.post('/api/transfer', async (req, res) => {
       return res.status(404).json({ message: error.message });
     }
 
-    // Determine what type the sender used for recipient
     const senderUsedAccountNumber = isAccountNumber(toInput);
-    
-    // Get sender's identifier of the SAME TYPE using Registry
     let senderDisplayIdentifier;
     let senderAccountNumber = null;
     
@@ -492,14 +678,6 @@ app.post('/api/transfer', async (req, res) => {
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
-    console.log(`📝 Transfer Details:`);
-    console.log(`   Sender address: ${safeAddress}`);
-    console.log(`   Sender used: ${senderUsedAccountNumber ? 'Account Number' : 'Address'}`);
-    console.log(`   Sender identifier to store: ${senderDisplayIdentifier}`);
-    console.log(`   Recipient input: ${toInput}`);
-    console.log(`   Recipient address: ${recipientAddress}`);
-
-    // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("Transfer queued");
 
     const result = await sponsorSafeTransfer(
@@ -510,9 +688,6 @@ app.post('/api/transfer', async (req, res) => {
     );
 
     if (!result || !result.taskId) {
-      console.error("❌ Transfer failed: No taskId returned");
-      
-      // FIXED: Save failed transaction
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: senderAccountNumber,
@@ -532,11 +707,8 @@ app.post('/api/transfer', async (req, res) => {
       });
     }
 
-    console.log(`✅ Transfer submitted with taskId: ${result.taskId}`);
-
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
     
-    // Save based on status (successful or failed)
     if (taskStatus.success) {
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
@@ -550,10 +722,7 @@ app.post('/api/transfer', async (req, res) => {
         type: 'transfer',
         date: new Date()
       }).save();
-      
-      console.log(`✅ Transaction saved as SUCCESSFUL`);
     } else {
-      // FIXED: Save as failed instead of not saving at all
       await new Transaction({
         fromAddress: safeAddress.toLowerCase(),
         fromAccountNumber: senderAccountNumber,
@@ -567,8 +736,6 @@ app.post('/api/transfer', async (req, res) => {
         date: new Date()
       }).save();
       
-      console.log(`❌ Transaction saved as FAILED`);
-      
       return res.status(400).json({ 
         success: false, 
         message: taskStatus.reason || "Transfer reverted on blockchain"
@@ -579,60 +746,19 @@ app.post('/api/transfer', async (req, res) => {
 
   } catch (error) {
     console.error("❌ Transfer failed:", error.message);
-    
-    try {
-      const senderUsedAccountNumber = isAccountNumber(req.body.toInput);
-      let senderAccountNumber = null;
-      let senderDisplayIdentifier;
-      
-      if (senderUsedAccountNumber) {
-        senderAccountNumber = await getAccountNumberFromAddress(req.body.safeAddress);
-        senderDisplayIdentifier = senderAccountNumber || req.body.safeAddress.toLowerCase();
-      } else {
-        senderDisplayIdentifier = req.body.safeAddress.toLowerCase();
-      }
-      
-      let recipientAddress = null;
-      try {
-        recipientAddress = await resolveToAddress(req.body.toInput);
-      } catch (e) {
-        // Resolution failed
-      }
-      
-      // FIXED: Save failed transaction
-      await new Transaction({
-        fromAddress: req.body.safeAddress.toLowerCase(),
-        fromAccountNumber: senderAccountNumber,
-        toAddress: recipientAddress,
-        toAccountNumber: req.body.toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        amount: req.body.amount,
-        status: 'failed',
-        taskId: null,
-        type: 'transfer',
-        date: new Date()
-      }).save();
-    } catch (dbError) {
-      console.error("Failed to save failed transaction:", dbError);
-    }
-
-    res.status(400).json({ 
-      success: false, 
-      message: "Transfer failed", 
-      error: error.message 
-    });
+    return handleError(error, res, 'Transfer failed');
   }
 });
 
-
 // ===============================================
-// FIXED APPROVE ENDPOINT - Store What Approver Inputted
+// APPROVE
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
     
-    // Resolve spender address using Registry
+    validateAmount(amount);
+    
     let finalSpenderAddress;
     try {
       finalSpenderAddress = await resolveToAddress(spenderInput);
@@ -642,7 +768,6 @@ app.post('/api/approve', async (req, res) => {
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
     
-    // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("Approval queued");
 
     const result = await sponsorSafeApprove(safeAddress, userPrivateKey, finalSpenderAddress, amountWei);
@@ -656,19 +781,18 @@ app.post('/api/approve', async (req, res) => {
       return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
     }
 
-    // ✅ FIXED: Store what approver inputted AND the resolved address
     const inputType = isAccountNumber(spenderInput) ? 'accountNumber' : 'address';
     
     await Approval.findOneAndUpdate(
       { 
         owner: safeAddress.toLowerCase(), 
-        spender: finalSpenderAddress.toLowerCase()  // Address is the unique key
+        spender: finalSpenderAddress.toLowerCase()
       },
       { 
         amount: amount, 
         date: new Date(),
-        spenderInput: spenderInput,           // ✅ What approver typed
-        spenderInputType: inputType           // ✅ Type of input used
+        spenderInput: spenderInput,
+        spenderInputType: inputType
       },
       { upsert: true, new: true }
     );
@@ -676,22 +800,25 @@ app.post('/api/approve', async (req, res) => {
     res.json({ success: true, taskId: result.taskId });
   } catch (error) {
     console.error("Approval Error:", error);
-    res.status(500).json({ message: "Approval failed", error: error.message });
+    return handleError(error, res, 'Approval failed');
   }
 });
 
 // ===============================================
-// GET TRANSACTIONS (FIXED - Show ALL transactions including failed)
+// TRANSACTIONS
 // ===============================================
 app.get('/api/transactions/:address', async (req, res) => {
   try {
     const address = req.params.address.toLowerCase();
 
-    // FIXED: Show ALL transactions (successful AND failed), but only from sender's perspective
+    if (!ethers.isAddress(address)) {
+      return res.status(400).json({ message: 'Invalid address format' });
+    }
+
     const transactions = await Transaction.find({
       $or: [
-        { fromAddress: address }, // Sent transactions (successful or failed)
-        { toAddress: address, status: 'successful' } // Only successful received transactions
+        { fromAddress: address },
+        { toAddress: address, status: 'successful' }
       ]
     }).sort({ date: -1 }).limit(50);
 
@@ -699,10 +826,9 @@ app.get('/api/transactions/:address', async (req, res) => {
       const isReceived = tx.toAddress?.toLowerCase() === address && tx.status === 'successful';
       const isFailed = tx.status === 'failed';
       
-      // Display logic
       const displayPartner = isReceived 
-        ? (tx.senderDisplayIdentifier || tx.fromAccountNumber || tx.fromAddress) // Show what sender used
-        : (tx.toAccountNumber || tx.toAddress);    // Show recipient's info
+        ? (tx.senderDisplayIdentifier || tx.fromAccountNumber || tx.fromAddress)
+        : (tx.toAccountNumber || tx.toAddress);
       
       return {
         ...tx._doc,
@@ -714,53 +840,36 @@ app.get('/api/transactions/:address', async (req, res) => {
     res.json(formatted);
   } catch (error) {
     console.error("❌ History Fetch Error:", error);
-    res.status(500).json([]);
+    return handleError(error, res, 'Failed to fetch transactions');
   }
 });
 
 // ===============================================
-// TRANSFER FROM (FIXED - Save failed transactions)
+// TRANSFER FROM
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
+    
+    validateAmount(amount);
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Resolve FROM address using Registry
-    let fromAddress;
+    let fromAddress, toAddress;
     try {
       fromAddress = await resolveToAddress(fromInput);
     } catch (error) {
       return res.status(404).json({ success: false, message: `Source: ${error.message}` });
     }
 
-    // Resolve TO address using Registry
-    let toAddress;
     try {
       toAddress = await resolveToAddress(toInput);
     } catch (error) {
       return res.status(404).json({ success: false, message: `Destination: ${error.message}` });
     }
 
-    // Determine what type executor used for FROM input
     const fromInputWasAccountNumber = isAccountNumber(fromInput);
-    
-    // Get the source account's identifier of the SAME TYPE
-    let senderDisplayIdentifier;
-    if (fromInputWasAccountNumber) {
-      senderDisplayIdentifier = fromInput;
-    } else {
-      senderDisplayIdentifier = fromAddress;
-    }
+    let senderDisplayIdentifier = fromInputWasAccountNumber ? fromInput : fromAddress;
 
-    console.log(`📝 TransferFrom Details:`);
-    console.log(`   Executor address: ${safeAddress}`);
-    console.log(`   Executor used for FROM: ${fromInputWasAccountNumber ? 'Account Number' : 'Address'}`);
-    console.log(`   Sender identifier to store: ${senderDisplayIdentifier}`);
-    console.log(`   From input: ${fromInput} → ${fromAddress}`);
-    console.log(`   To input: ${toInput} → ${toAddress}`);
-
-    // 8-SECOND DELAY BEFORE BLOCKCHAIN CALL
     await delayBeforeBlockchain("TransferFrom queued");
 
     const result = await sponsorSafeTransferFrom(
@@ -772,7 +881,6 @@ app.post('/api/transferFrom', async (req, res) => {
     );
 
     if (!result || !result.taskId) {
-      // FIXED: Save failed transaction
       await new Transaction({
         fromAddress: fromAddress,
         fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
@@ -792,44 +900,24 @@ app.post('/api/transferFrom', async (req, res) => {
 
     const taskStatus = await checkGelatoTaskStatus(result.taskId);
     
-    // Save based on status
-    if (taskStatus.success) {
-      await new Transaction({
-        fromAddress: fromAddress,
-        fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
-        toAddress: toAddress,
-        toAccountNumber: toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        executorAddress: safeAddress.toLowerCase(),
-        amount: amount,
-        status: 'successful', 
-        type: 'transferFrom',
-        taskId: result.taskId,
-        date: new Date()
-      }).save();
-      
-      console.log(`✅ TransferFrom saved as SUCCESSFUL`);
-    } else {
-      // FIXED: Save as failed
-      await new Transaction({
-        fromAddress: fromAddress,
-        fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
-        toAddress: toAddress,
-        toAccountNumber: toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        executorAddress: safeAddress.toLowerCase(),
-        amount: amount,
-        status: 'failed',
-        taskId: result.taskId,
-        type: 'transferFrom',
-        date: new Date()
-      }).save();
-      
-      console.log(`❌ TransferFrom saved as FAILED`);
-      
+    await new Transaction({
+      fromAddress: fromAddress,
+      fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
+      toAddress: toAddress,
+      toAccountNumber: toInput,
+      senderDisplayIdentifier: senderDisplayIdentifier,
+      executorAddress: safeAddress.toLowerCase(),
+      amount: amount,
+      status: taskStatus.success ? 'successful' : 'failed',
+      type: 'transferFrom',
+      taskId: result.taskId,
+      date: new Date()
+    }).save();
+
+    if (!taskStatus.success) {
       return res.status(400).json({
         success: false, 
-        message: taskStatus.reason || "Transfer reverted: Check allowance or balance"
+        message: taskStatus.reason || "Transfer reverted"
       });
     }
 
@@ -837,133 +925,21 @@ app.post('/api/transferFrom', async (req, res) => {
 
   } catch (error) {
     console.error("❌ TransferFrom failed:", error.message);
-    
-    try {
-      // FIXED: Save failed transaction on exception
-      const fromInputWasAccountNumber = isAccountNumber(req.body.fromInput);
-      let fromAddress, toAddress;
-      
-      try {
-        fromAddress = await resolveToAddress(req.body.fromInput);
-        toAddress = await resolveToAddress(req.body.toInput);
-      } catch (e) {
-        // Resolution failed
-      }
-      
-      const senderDisplayIdentifier = fromInputWasAccountNumber ? req.body.fromInput : fromAddress;
-      
-      await new Transaction({
-        fromAddress: fromAddress,
-        fromAccountNumber: fromInputWasAccountNumber ? req.body.fromInput : null,
-        toAddress: toAddress,
-        toAccountNumber: req.body.toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        executorAddress: req.body.safeAddress.toLowerCase(),
-        amount: req.body.amount,
-        status: 'failed',
-        taskId: null,
-        type: 'transferFrom',
-        date: new Date()
-      }).save();
-    } catch (dbError) {
-      console.error("Failed to save failed transaction:", dbError);
-    }
-    
-    res.status(400).json({ success: false, message: "Transfer failed", error: error.message });
+    return handleError(error, res, 'Transfer failed');
   }
 });
 
 // ===============================================
-// GET INCOMING ALLOWANCES (FIXED - Display matching type)
-// ===============================================
-app.get('/api/allowances-for/:address', async (req, res) => {
-  try {
-    const userAddress = req.params.address.toLowerCase();
-    
-    const TOKEN_ABI = ["function allowance(address,address) view returns (uint256)"];
-    const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
-    
-    // Find all approvals
-    const allApprovals = await Approval.find({});
-    
-    const relevantApprovals = [];
-    
-    for (const app of allApprovals) {
-      try {
-        // Resolve the stored spender to an address
-        let spenderAddress;
-        try {
-          spenderAddress = await resolveToAddress(app.spender);
-        } catch (e) {
-          spenderAddress = app.spender.toLowerCase();
-        }
-        
-        // Check if this approval's spender matches current user
-        if (spenderAddress.toLowerCase() === userAddress.toLowerCase()) {
-          // Check live allowance amount
-          const liveAllowanceWei = await tokenContract.allowance(app.owner, userAddress);
-          const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
-          
-          if (parseFloat(liveAmount) > 0) {
-            // Update amount if changed
-            if (liveAmount !== app.amount) {
-              await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
-            }
-            
-            // FIXED: Determine what type the approver (owner) used
-            const approverUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
-            
-            let ownerDisplay;
-            let spenderDisplay;
-            
-            if (approverUsedAccountNumber) {
-              // Owner used account number for spender, so:
-              // - Show owner's account number
-              // - Keep spender's account number (what owner inputted)
-              ownerDisplay = await getAccountNumberFromAddress(app.owner);
-              if (!ownerDisplay) ownerDisplay = app.owner; // Fallback to address
-              spenderDisplay = app.displaySpender || app.spender; // What owner inputted
-            } else {
-              // Owner used address for spender, so:
-              // - Show owner's address
-              // - Keep spender's address
-              ownerDisplay = app.owner;
-              spenderDisplay = userAddress; // Current user's address
-            }
-            
-            relevantApprovals.push({
-              allower: ownerDisplay,              // What to show for "FROM" in form
-              allowerAddress: app.owner,          // Actual address for backend
-              spenderDisplay: spenderDisplay,     // What to show for "TO" in form  
-              amount: liveAmount,
-              date: app.date
-            });
-          } else {
-            // Remove if allowance is 0
-            await Approval.deleteOne({ _id: app._id });
-          }
-        }
-      } catch (err) {
-        console.error(`Error processing approval ${app._id}:`, err.message);
-      }
-    }
-
-    res.json(relevantApprovals);
-  } catch (error) {
-    console.error("Critical Incoming Allowance Route Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ADD TO index.js - PIN MANAGEMENT ROUTES
-
-// ===============================================
-// CHECK IF USER NEEDS TO SET PIN (After Registration/Login)
+// PIN MANAGEMENT
 // ===============================================
 app.get('/api/user/pin-status/:email', async (req, res) => {
   try {
-    const user = await User.findOne({ email: req.params.email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    const email = sanitizeEmail(req.params.email);
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     res.json({
       hasPin: !!user.transactionPin,
@@ -972,71 +948,59 @@ app.get('/api/user/pin-status/:email', async (req, res) => {
       lockedUntil: user.accountLockedUntil
     });
   } catch (error) {
-    res.status(500).json({ message: "Failed to check PIN status" });
+    return handleError(error, res, 'Failed to check PIN status');
   }
 });
 
-// ===============================================
-// SET TRANSACTION PIN (First Time Setup) - FIXED
-// ===============================================
-app.post('/api/user/set-pin', async (req, res) => {
+app.post('/api/user/set-pin', authLimiter, async (req, res) => {
   try {
     const { email, pin } = req.body;
+    
+    validatePin(pin);
 
-    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-      return res.status(400).json({ message: "PIN must be exactly 4 digits" });
-    }
-
-    // ✅ FIX: Try to find user by email OR username (fallback)
-    let user = await User.findOne({ email });
+    const sanitizedEmail = sanitizeEmail(email);
+    let user = await User.findOne({ email: sanitizedEmail });
     
     if (!user) {
-      // If not found by email, try username (for old users)
-      user = await User.findOne({ username: email });
+      user = await User.findOne({ username: sanitizedEmail });
     }
     
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Check if PIN already exists
     if (user.transactionPin) {
       return res.status(400).json({ message: "PIN already set. Use reset-pin instead." });
     }
 
-    // Hash the PIN for storage
     const hashedPin = hashPin(pin);
-
-    // Encrypt the private key with the PIN
     const encryptedKey = encryptPrivateKey(user.ownerPrivateKey, pin);
 
-    // Update user
     user.transactionPin = hashedPin;
     user.ownerPrivateKey = encryptedKey;
     user.pinSetupCompleted = true;
-    // NO LOCKOUT for first-time setup
     await user.save();
 
     console.log(`✅ PIN set for user: ${user.email || user.username}`);
     res.json({ success: true, message: "Transaction PIN set successfully!" });
+    
   } catch (error) {
     console.error("❌ Set PIN error:", error);
-    res.status(500).json({ message: "Failed to set PIN" });
+    return handleError(error, res, 'Failed to set PIN');
   }
 });
 
-// ===============================================
-// VERIFY TRANSACTION PIN - FIXED
-// ===============================================
-app.post('/api/user/verify-pin', async (req, res) => {
+app.post('/api/user/verify-pin', authLimiter, async (req, res) => {
   try {
     const { email, pin } = req.body;
+    
+    validatePin(pin);
 
-    // ✅ FIX: Try email first, then username
-    let user = await User.findOne({ email });
+    const sanitizedEmail = sanitizeEmail(email);
+    let user = await User.findOne({ email: sanitizedEmail });
     
     if (!user) {
-      user = await User.findOne({ username: email });
+      user = await User.findOne({ username: sanitizedEmail });
     }
     
     if (!user) {
@@ -1047,14 +1011,12 @@ app.post('/api/user/verify-pin', async (req, res) => {
       return res.status(400).json({ message: "No PIN set. Please set PIN first." });
     }
 
-    // Verify PIN
     const isValid = verifyPin(pin, user.transactionPin);
 
     if (!isValid) {
       return res.status(401).json({ success: false, message: "Invalid PIN" });
     }
 
-    // Check if account is locked
     if (user.accountLockedUntil && new Date(user.accountLockedUntil) > new Date()) {
       const hoursLeft = Math.ceil((new Date(user.accountLockedUntil) - new Date()) / (1000 * 60 * 60));
       return res.status(403).json({ 
@@ -1063,70 +1025,68 @@ app.post('/api/user/verify-pin', async (req, res) => {
       });
     }
 
-    // Decrypt private key temporarily for transaction
+    let decryptedKey;
     try {
-      const decryptedKey = decryptPrivateKey(user.ownerPrivateKey, pin);
-      res.json({ 
-        success: true, 
-        privateKey: decryptedKey
+      decryptedKey = decryptPrivateKey(user.ownerPrivateKey, pin);
+    } catch (error) {
+      return res.status(401).json({ 
+        success: false, 
+        message: "Invalid PIN or corrupted key" 
       });
-    } catch (decryptError) {
-      return res.status(401).json({ success: false, message: "Invalid PIN or corrupted key" });
     }
+
+    res.json({ 
+      success: true, 
+      privateKey: decryptedKey
+    });
+    
   } catch (error) {
     console.error("❌ Verify PIN error:", error);
-    res.status(500).json({ message: "Failed to verify PIN" });
+    return res.status(401).json({ 
+      success: false, 
+      message: "Invalid PIN or corrupted key" 
+    });
   }
 });
 
-// ===============================================
-// RESET TRANSACTION PIN (With OTP, Old PIN, and 24HR Lockout) - PROPERLY FIXED
-// ===============================================
-app.post('/api/user/reset-pin', async (req, res) => {
+app.post('/api/user/reset-pin', authLimiter, async (req, res) => {
   try {
     const { email, oldPin, newPin } = req.body;
+    
+    const sanitizedEmail = sanitizeEmail(email);
 
-    // OTP should already be verified at this point (frontend handles OTP flow)
-    if (!otpStore[email] || !otpStore[email].verified) {
+    if (!otpStore[sanitizedEmail] || !otpStore[sanitizedEmail].verified) {
       return res.status(401).json({ message: "Please verify OTP first" });
     }
 
-    if (!oldPin || oldPin.length !== 4 || !/^\d{4}$/.test(oldPin)) {
-      return res.status(400).json({ message: "Old PIN must be exactly 4 digits" });
-    }
+    validatePin(oldPin);
+    validatePin(newPin);
 
-    if (!newPin || newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
-      return res.status(400).json({ message: "New PIN must be exactly 4 digits" });
+    const user = await User.findOne({ email: sanitizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
     }
-
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
 
     if (!user.transactionPin) {
       return res.status(400).json({ message: "No PIN set. Please use set-pin instead." });
     }
 
-    // Verify old PIN
     const isOldPinValid = verifyPin(oldPin, user.transactionPin);
     if (!isOldPinValid) {
       return res.status(401).json({ message: "Invalid old PIN. Reset failed." });
     }
 
-    // Decrypt private key with OLD PIN
     let privateKey;
     try {
       privateKey = decryptPrivateKey(user.ownerPrivateKey, oldPin);
     } catch (error) {
       return res.status(401).json({ 
-        message: "Failed to decrypt private key with old PIN. Key may be corrupted." 
+        message: "Failed to decrypt private key with old PIN." 
       });
     }
 
-    // Hash new PIN and re-encrypt private key with NEW PIN
     const hashedNewPin = hashPin(newPin);
     const encryptedKey = encryptPrivateKey(privateKey, newPin);
-
-    // Set 24-hour lockout
     const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     user.transactionPin = hashedNewPin;
@@ -1135,149 +1095,121 @@ app.post('/api/user/reset-pin', async (req, res) => {
     user.pinSetupCompleted = true;
     await user.save();
 
-    delete otpStore[email];
+    delete otpStore[sanitizedEmail];
 
-    console.log(`✅ PIN reset for user: ${email}, locked until: ${lockoutTime}`);
+    console.log(`✅ PIN reset for user: ${sanitizedEmail}`);
     res.json({ 
       success: true, 
       message: "PIN reset successful. Account locked for 24 hours.",
       lockedUntil: lockoutTime
     });
+    
   } catch (error) {
     console.error("❌ Reset PIN error:", error);
-    res.status(500).json({ message: "Failed to reset PIN" });
+    return handleError(error, res, 'Failed to reset PIN');
   }
 });
 
-// ===============================================
-// SET TRANSACTION PIN (First Time Setup) - NO CHANGES NEEDED
-// ===============================================
-app.post('/api/user/set-pin', async (req, res) => {
+app.post('/api/user/update-email', authLimiter, async (req, res) => {
   try {
-    const { email, pin } = req.body;
+    const { oldEmail, newEmail } = req.body;
+    
+    const sanitizedOldEmail = sanitizeEmail(oldEmail);
+    const sanitizedNewEmail = sanitizeEmail(newEmail);
 
-    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
-      return res.status(400).json({ message: "PIN must be exactly 4 digits" });
+    if (!otpStore[sanitizedOldEmail] || !otpStore[sanitizedOldEmail].verified) {
+      return res.status(401).json({ message: "Please verify OTP first" });
     }
 
-    let user = await User.findOne({ email });
-    
-    if (!user) {
-      user = await User.findOne({ username: email });
-    }
-    
+    const user = await User.findOne({ email: sanitizedOldEmail });
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    if (user.transactionPin) {
-      return res.status(400).json({ message: "PIN already set. Use reset-pin instead." });
-    }
-
-    const hashedPin = hashPin(pin);
-    const encryptedKey = encryptPrivateKey(user.ownerPrivateKey, pin);
-
-    user.transactionPin = hashedPin;
-    user.ownerPrivateKey = encryptedKey;
-    user.pinSetupCompleted = true;
-    // NO LOCKOUT for first-time setup
-    await user.save();
-
-    console.log(`✅ PIN set for user: ${user.email || user.username}`);
-    res.json({ success: true, message: "Transaction PIN set successfully!" });
-  } catch (error) {
-    console.error("❌ Set PIN error:", error);
-    res.status(500).json({ message: "Failed to set PIN" });
-  }
-});
-
-// ===============================================
-// UPDATE EMAIL (With 24HR Lockout)
-// ===============================================
-app.post('/api/user/update-email', async (req, res) => {
-  try {
-    const { oldEmail, newEmail } = req.body;
-
-    if (!otpStore[oldEmail] || !otpStore[oldEmail].verified) {
-      return res.status(401).json({ message: "Please verify OTP first" });
-    }
-
-    const user = await User.findOne({ email: oldEmail });
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    // Check if new email already exists
-    const existingUser = await User.findOne({ email: newEmail });
+    const existingUser = await User.findOne({ email: sanitizedNewEmail });
     if (existingUser) {
       return res.status(400).json({ message: "Email already in use" });
     }
 
-    // Set 24-hour lockout
     const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    user.email = newEmail;
+    user.email = sanitizedNewEmail;
     user.accountLockedUntil = lockoutTime;
     await user.save();
 
-    delete otpStore[oldEmail];
+    delete otpStore[sanitizedOldEmail];
 
     res.json({ 
       success: true, 
       message: "Email updated. Account locked for 24 hours.",
       lockedUntil: lockoutTime
     });
+    
   } catch (error) {
     console.error("❌ Update email error:", error);
-    res.status(500).json({ message: "Failed to update email" });
+    return handleError(error, res, 'Failed to update email');
   }
 });
 
-// ===============================================
-// UPDATE PASSWORD (With 24HR Lockout)
-// ===============================================
-app.post('/api/user/update-password', async (req, res) => {
+app.post('/api/user/update-password', authLimiter, async (req, res) => {
   try {
     const { email, newPassword } = req.body;
+    
+    const sanitizedEmail = sanitizeEmail(email);
 
-    if (!otpStore[email] || !otpStore[email].verified) {
+    if (!otpStore[sanitizedEmail] || !otpStore[sanitizedEmail].verified) {
       return res.status(401).json({ message: "Please verify OTP first" });
     }
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+      return res.status(400).json({ 
+        message: 'Password must be at least 8 characters with uppercase, lowercase, and number' 
+      });
+    }
+
+    const user = await User.findOne({ email: sanitizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Set 24-hour lockout
     const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     user.password = hashedPassword;
     user.accountLockedUntil = lockoutTime;
     await user.save();
 
-    delete otpStore[email];
+    delete otpStore[sanitizedEmail];
 
     res.json({ 
       success: true, 
       message: "Password updated. Account locked for 24 hours.",
       lockedUntil: lockoutTime
     });
+    
   } catch (error) {
     console.error("❌ Update password error:", error);
-    res.status(500).json({ message: "Failed to update password" });
+    return handleError(error, res, 'Failed to update password');
   }
 });
 
-// ===============================================
-// UPDATE USERNAME (No lockout)
-// ===============================================
 app.post('/api/user/update-username', async (req, res) => {
   try {
     const { email, newUsername } = req.body;
+    
+    const sanitizedEmail = sanitizeEmail(email);
 
-    const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!newUsername || !/^[a-zA-Z0-9_]{3,20}$/.test(newUsername)) {
+      return res.status(400).json({ 
+        message: 'Username must be 3-20 alphanumeric characters' 
+      });
+    }
 
-    // Check if username already exists
+    const user = await User.findOne({ email: sanitizedEmail });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     const existingUser = await User.findOne({ username: newUsername });
     if (existingUser && existingUser._id.toString() !== user._id.toString()) {
       return res.status(400).json({ message: "Username already taken" });
@@ -1287,49 +1219,77 @@ app.post('/api/user/update-username', async (req, res) => {
     await user.save();
 
     res.json({ success: true, message: "Username updated successfully!" });
+    
   } catch (error) {
     console.error("❌ Update username error:", error);
-    res.status(500).json({ message: "Failed to update username" });
+    return handleError(error, res, 'Failed to update username');
   }
 });
 
 // ===============================================
-// GET GLOBAL STATS
+// STATS
 // ===============================================
 app.get('/api/stats', async (req, res) => {
   try {
     const citizenCount = await User.countDocuments();
     let totalSupply = '0';
+    
     try {
       const TOKEN_ABI = ["function totalSupply() view returns (uint256)"];
       const tokenContract = new ethers.Contract(process.env.NGN_TOKEN_ADDRESS, TOKEN_ABI, provider);
       const supplyWei = await retryRPCCall(async () => await tokenContract.totalSupply());
       totalSupply = ethers.formatUnits(supplyWei, 6);
     } catch (rpcError) {
+      console.error("Failed to fetch total supply:", rpcError.message);
       totalSupply = '0';
     }
+    
     res.json({ userCount: citizenCount.toString(), totalMinted: totalSupply });
   } catch (error) {
+    console.error("Stats fetch error:", error);
     res.status(200).json({ userCount: "0", totalMinted: "0" });
   }
 });
 
-const PORT = process.env.PORT || 10000;
-
+// ===============================================
+// ERROR HANDLER
+// ===============================================
 app.use((err, req, res, next) => {
   console.error('Final Catch-All Error:', err.stack);
-  res.status(500).json({ 
-    message: 'Internal Server Error', 
-    error: process.env.NODE_ENV === 'production' ? {} : err.message 
-  });
+  
+  if (process.env.NODE_ENV === 'production') {
+    res.status(500).json({ message: 'Internal Server Error' });
+  } else {
+    res.status(500).json({ 
+      message: 'Internal Server Error', 
+      error: err.message,
+      stack: err.stack
+    });
+  }
 });
+
+// ===============================================
+// START SERVER
+// ===============================================
+const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SALVA BACKEND ACTIVE ON PORT ${PORT}`);
+  console.log(`🔒 Security features enabled:`);
+  console.log(`   ✅ MongoDB injection protection`);
+  console.log(`   ✅ Rate limiting (Auth: 5/15min, API: 100/min)`);
+  console.log(`   ✅ Security headers (Helmet)`);
+  console.log(`   ✅ Input validation`);
+  console.log(`   ✅ PBKDF2 encryption (600k iterations)`);
+  console.log(`   ✅ Constant-time comparisons`);
+  console.log(`   ✅ Environment-based CORS`);
 });
 
+// ===============================================
+// KEEP-ALIVE (Update with your actual domain)
+// ===============================================
 const INTERVAL = 10 * 60 * 1000;
-const URL = "https://salva-api.onrender.com/api/stats";
+const URL = "https://salva-api.onrender.com/api/stats"; // Update if different
 
 function reloadWebsite() {
   fetch(URL)
