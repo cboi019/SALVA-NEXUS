@@ -598,7 +598,7 @@ app.get('/api/approvals/:address', async (req, res) => {
 });
 
 // ===============================================
-// INCOMING ALLOWANCES
+// INCOMING ALLOWANCES - FIXED
 // ===============================================
 app.get('/api/allowances-for/:address', async (req, res) => {
   try {
@@ -616,42 +616,46 @@ app.get('/api/allowances-for/:address', async (req, res) => {
     
     for (const app of allApprovals) {
       try {
-        let spenderAddress;
-        try {
-          spenderAddress = await resolveToAddress(app.spender);
-        } catch (e) {
-          spenderAddress = app.spender.toLowerCase();
-        }
+        // ✅ FIX: Use app.spender directly (it's already the resolved address)
+        const spenderAddress = app.spender.toLowerCase();
         
-        if (spenderAddress.toLowerCase() === userAddress.toLowerCase()) {
+        // Check if this approval's spender matches current user
+        if (spenderAddress === userAddress) {
+          // Check live allowance amount
           const liveAllowanceWei = await tokenContract.allowance(app.owner, userAddress);
           const liveAmount = ethers.formatUnits(liveAllowanceWei, 6);
           
           if (parseFloat(liveAmount) > 0) {
+            // Update amount if changed
             if (liveAmount !== app.amount) {
               await Approval.updateOne({ _id: app._id }, { $set: { amount: liveAmount } });
             }
             
-            const approverUsedAccountNumber = isAccountNumber(app.displaySpender || app.spender);
+            // ✅ FIX: Use spenderInputType to determine what approver used
             let ownerDisplay, spenderDisplay;
             
-            if (approverUsedAccountNumber) {
+            if (app.spenderInputType === 'accountNumber') {
+              // Approver used account number for spender
+              // So display owner's account number and spender's account number
               ownerDisplay = await getAccountNumberFromAddress(app.owner);
-              if (!ownerDisplay) ownerDisplay = app.owner;
-              spenderDisplay = app.displaySpender || app.spender;
+              if (!ownerDisplay) ownerDisplay = app.owner; // Fallback to address
+              spenderDisplay = app.spenderInput; // ✅ What approver originally typed
             } else {
+              // Approver used address for spender
+              // So display owner's address and spender's address
               ownerDisplay = app.owner;
               spenderDisplay = userAddress;
             }
             
             relevantApprovals.push({
-              allower: ownerDisplay,
-              allowerAddress: app.owner,
-              spenderDisplay: spenderDisplay,
+              allower: ownerDisplay,              // ✅ What to show in "FROM" field
+              allowerAddress: app.owner,          // Actual address for backend
+              spenderDisplay: spenderDisplay,     // ✅ What to show in "TO" field  
               amount: liveAmount,
               date: app.date
             });
           } else {
+            // Remove if allowance is 0
             await Approval.deleteOne({ _id: app._id });
           }
         }

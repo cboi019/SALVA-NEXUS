@@ -1,4 +1,4 @@
-// Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx - PART 1 (FIXED)
+// Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx
 import { API_BASE_URL } from '../config';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
