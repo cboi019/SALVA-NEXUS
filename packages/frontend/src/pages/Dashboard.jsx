@@ -707,7 +707,7 @@ const Dashboard = () => {
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden" />
               <h3 className="text-2xl sm:text-3xl font-black mb-1">Send NGNs</h3>
               <p className="text-[10px] text-salvaGold uppercase tracking-widest font-bold mb-8">Salva Secure Transfer</p>
-              <form onSubmit={(e) => { e.preventDefault(); setPendingTransaction('send'); setIsPinModalOpen(true); setTransactionPin(''); setPinAttempts(0);}} className="space-y-5">
+              <form onSubmit={(e) => { e.preventDefault(); setIsSendOpen(false); setPendingTransaction('send'); setIsPinModalOpen(true); setTransactionPin(''); setPinAttempts(0);}} className="space-y-5">
                 <div>
                   <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Recipient</label>
                   <input required type="text" placeholder="Enter Account Number or Address" value={transferData.to} onChange={(e) => setTransferData({ ...transferData, to: e.target.value })} className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm" />
