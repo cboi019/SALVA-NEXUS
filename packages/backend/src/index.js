@@ -778,7 +778,11 @@ app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
     
-    validateAmount(amount);
+    // ✅ FIX: Allow 0 for revocations
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount < 0 || numAmount > 1000000000) {
+      return res.status(400).json({ message: 'Invalid amount' });
+    }
     
     let finalSpenderAddress;
     try {
@@ -804,19 +808,27 @@ app.post('/api/approve', async (req, res) => {
 
     const inputType = isAccountNumber(spenderInput) ? 'accountNumber' : 'address';
     
-    await Approval.findOneAndUpdate(
-      { 
+    // ✅ If amount is 0, delete the approval record
+    if (numAmount === 0) {
+      await Approval.deleteOne({
         owner: safeAddress.toLowerCase(), 
         spender: finalSpenderAddress.toLowerCase()
-      },
-      { 
-        amount: amount, 
-        date: new Date(),
-        spenderInput: spenderInput,
-        spenderInputType: inputType
-      },
-      { upsert: true, new: true }
-    );
+      });
+    } else {
+      await Approval.findOneAndUpdate(
+        { 
+          owner: safeAddress.toLowerCase(), 
+          spender: finalSpenderAddress.toLowerCase()
+        },
+        { 
+          amount: amount, 
+          date: new Date(),
+          spenderInput: spenderInput,
+          spenderInputType: inputType
+        },
+        { upsert: true, new: true }
+      );
+    }
 
     res.json({ success: true, taskId: result.taskId });
   } catch (error) {
