@@ -1080,53 +1080,59 @@ app.post('/api/user/verify-pin', async (req, res) => {
 });
 
 // ===============================================
-// RESET TRANSACTION PIN (With OTP and 24HR Lockout)
+// RESET TRANSACTION PIN (With OTP, Old PIN, and 24HR Lockout) - PROPERLY FIXED
 // ===============================================
 app.post('/api/user/reset-pin', async (req, res) => {
   try {
-    const { email, newPin } = req.body;
+    const { email, oldPin, newPin } = req.body;
 
     // OTP should already be verified at this point (frontend handles OTP flow)
     if (!otpStore[email] || !otpStore[email].verified) {
       return res.status(401).json({ message: "Please verify OTP first" });
     }
 
+    if (!oldPin || oldPin.length !== 4 || !/^\d{4}$/.test(oldPin)) {
+      return res.status(400).json({ message: "Old PIN must be exactly 4 digits" });
+    }
+
     if (!newPin || newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
-      return res.status(400).json({ message: "PIN must be exactly 4 digits" });
+      return res.status(400).json({ message: "New PIN must be exactly 4 digits" });
     }
 
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // Decrypt private key with OLD PIN first (if it was encrypted)
-    let privateKey = user.ownerPrivateKey;
-    if (user.transactionPin) {
-      // For users with existing PIN, we need the old PIN to decrypt
-      // But since they're resetting via OTP, we'll need to handle this differently
-      // For now, if they're resetting, assume they've lost access
-      // In production, you might want to add a backup recovery mechanism
-      try {
-        // Try to decrypt with a dummy attempt - if it fails, key is already plain
-        if (privateKey.includes(':')) {
-          throw new Error("Cannot decrypt old key without old PIN");
-        }
-      } catch (e) {
-        return res.status(400).json({ 
-          message: "Cannot reset PIN without old PIN. Contact support." 
-        });
-      }
+    if (!user.transactionPin) {
+      return res.status(400).json({ message: "No PIN set. Please use set-pin instead." });
     }
 
-    // Hash new PIN and encrypt private key
-    const hashedPin = hashPin(newPin);
+    // Verify old PIN
+    const isOldPinValid = verifyPin(oldPin, user.transactionPin);
+    if (!isOldPinValid) {
+      return res.status(401).json({ message: "Invalid old PIN. Reset failed." });
+    }
+
+    // Decrypt private key with OLD PIN
+    let privateKey;
+    try {
+      privateKey = decryptPrivateKey(user.ownerPrivateKey, oldPin);
+    } catch (error) {
+      return res.status(401).json({ 
+        message: "Failed to decrypt private key with old PIN. Key may be corrupted." 
+      });
+    }
+
+    // Hash new PIN and re-encrypt private key with NEW PIN
+    const hashedNewPin = hashPin(newPin);
     const encryptedKey = encryptPrivateKey(privateKey, newPin);
 
     // Set 24-hour lockout
     const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    user.transactionPin = hashedPin;
+    user.transactionPin = hashedNewPin;
     user.ownerPrivateKey = encryptedKey;
     user.accountLockedUntil = lockoutTime;
+    user.pinSetupCompleted = true;
     await user.save();
 
     delete otpStore[email];
@@ -1140,6 +1146,48 @@ app.post('/api/user/reset-pin', async (req, res) => {
   } catch (error) {
     console.error("❌ Reset PIN error:", error);
     res.status(500).json({ message: "Failed to reset PIN" });
+  }
+});
+
+// ===============================================
+// SET TRANSACTION PIN (First Time Setup) - NO CHANGES NEEDED
+// ===============================================
+app.post('/api/user/set-pin', async (req, res) => {
+  try {
+    const { email, pin } = req.body;
+
+    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) {
+      return res.status(400).json({ message: "PIN must be exactly 4 digits" });
+    }
+
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      user = await User.findOne({ username: email });
+    }
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.transactionPin) {
+      return res.status(400).json({ message: "PIN already set. Use reset-pin instead." });
+    }
+
+    const hashedPin = hashPin(pin);
+    const encryptedKey = encryptPrivateKey(user.ownerPrivateKey, pin);
+
+    user.transactionPin = hashedPin;
+    user.ownerPrivateKey = encryptedKey;
+    user.pinSetupCompleted = true;
+    // NO LOCKOUT for first-time setup
+    await user.save();
+
+    console.log(`✅ PIN set for user: ${user.email || user.username}`);
+    res.json({ success: true, message: "Transaction PIN set successfully!" });
+  } catch (error) {
+    console.error("❌ Set PIN error:", error);
+    res.status(500).json({ message: "Failed to set PIN" });
   }
 });
 

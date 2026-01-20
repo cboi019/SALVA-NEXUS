@@ -13,7 +13,7 @@ const AccountSettings = () => {
   const [activeModal, setActiveModal] = useState(null); // 'email', 'password', 'pin', 'username'
   const [modalStep, setModalStep] = useState(1); // 1: Warning, 2: OTP, 3: New Value
   const [otp, setOtp] = useState('');
-  const [formData, setFormData] = useState({ newValue: '', confirmValue: '' });
+  const [formData, setFormData] = useState({ oldPin: '', newValue: '', confirmValue: '' });
   const [pinStatus, setPinStatus] = useState({ hasPin: false, isLocked: false, lockedUntil: null });
   const navigate = useNavigate();
 
@@ -55,14 +55,14 @@ const AccountSettings = () => {
     setActiveModal(type);
     setModalStep(type === 'username' ? 3 : 1); // Username doesn't need OTP
     setOtp('');
-    setFormData({ newValue: '', confirmValue: '' });
+    setFormData({ oldPin: '', newValue: '', confirmValue: '' });
   };
 
   const closeModal = () => {
     setActiveModal(null);
     setModalStep(1);
     setOtp('');
-    setFormData({ newValue: '', confirmValue: '' });
+    setFormData({ oldPin: '', newValue: '', confirmValue: '' });
   };
 
   const sendOTP = async () => {
@@ -108,13 +108,21 @@ const AccountSettings = () => {
   };
 
   const handleSubmit = async () => {
+    // Validate matching values
     if (formData.newValue !== formData.confirmValue) {
       showMsg('Values do not match', 'error');
       return;
     }
 
+    // Validate PIN format
     if (activeModal === 'pin' && (formData.newValue.length !== 4 || !/^\d{4}$/.test(formData.newValue))) {
       showMsg('PIN must be exactly 4 digits', 'error');
+      return;
+    }
+
+    // ✅ CRITICAL: For PIN reset, validate old PIN is provided
+    if (activeModal === 'pin' && pinStatus.hasPin && (!formData.oldPin || formData.oldPin.length !== 4)) {
+      showMsg('Old PIN must be exactly 4 digits', 'error');
       return;
     }
 
@@ -132,7 +140,9 @@ const AccountSettings = () => {
         break;
       case 'pin':
         endpoint = pinStatus.hasPin ? '/api/user/reset-pin' : '/api/user/set-pin';
-        body = { email: user.email, [pinStatus.hasPin ? 'newPin' : 'pin']: formData.newValue };
+        body = pinStatus.hasPin 
+          ? { email: user.email, oldPin: formData.oldPin, newPin: formData.newValue }
+          : { email: user.email, pin: formData.newValue };
         break;
       case 'username':
         endpoint = '/api/user/update-username';
@@ -187,6 +197,7 @@ const AccountSettings = () => {
 
   const requiresOTP = ['email', 'password', 'pin'].includes(activeModal);
   const isFirstTimePin = activeModal === 'pin' && !pinStatus.hasPin;
+  const isResetPin = activeModal === 'pin' && pinStatus.hasPin;
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-hidden">
@@ -215,7 +226,6 @@ const AccountSettings = () => {
         )}
 
         <div className="space-y-4">
-          {/* Username */}
           <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-200 dark:border-white/5">
             <div className="flex justify-between items-center">
               <div>
@@ -228,13 +238,11 @@ const AccountSettings = () => {
             </div>
           </div>
 
-          {/* Account Number */}
           <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-200 dark:border-white/5">
             <p className="text-xs uppercase opacity-40 font-bold mb-1">Account Number</p>
             <p className="text-lg font-black font-mono text-salvaGold">{user.accountNumber}</p>
           </div>
 
-          {/* Email */}
           <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-200 dark:border-white/5">
             <div className="flex justify-between items-center">
               <div>
@@ -247,7 +255,6 @@ const AccountSettings = () => {
             </div>
           </div>
 
-          {/* Reset Password */}
           <button onClick={() => openModal('password')} className="w-full bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-200 dark:border-white/5 hover:border-salvaGold/30 transition-all text-left">
             <div className="flex justify-between items-center">
               <div>
@@ -258,7 +265,6 @@ const AccountSettings = () => {
             </div>
           </button>
 
-          {/* Transaction PIN */}
           <button onClick={() => openModal('pin')} className="w-full bg-gray-50 dark:bg-white/5 p-6 rounded-2xl border border-gray-200 dark:border-white/5 hover:border-salvaGold/30 transition-all text-left">
             <div className="flex justify-between items-center">
               <div>
@@ -277,6 +283,8 @@ const AccountSettings = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
             <motion.div onClick={closeModal} className="absolute inset-0 bg-black/95 backdrop-blur-md" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
             <motion.div onClick={(e) => e.stopPropagation()} className="relative bg-white dark:bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-gray-200 dark:border-white/10 shadow-2xl" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
+              
+              {/* Step 1: Warning (for email, password, PIN reset) */}
               {modalStep === 1 && requiresOTP && !isFirstTimePin && (
                 <>
                   <h3 className="text-2xl font-black mb-4">⚠️ Security Warning</h3>
@@ -290,6 +298,7 @@ const AccountSettings = () => {
                 </>
               )}
 
+              {/* Step 2: OTP Verification */}
               {modalStep === 2 && (
                 <>
                   <h3 className="text-2xl font-black mb-4">Verify Your Identity</h3>
@@ -302,34 +311,68 @@ const AccountSettings = () => {
                 </>
               )}
 
+              {/* Step 3: Input New Values */}
               {((modalStep === 3 && requiresOTP) || (modalStep === 3 && activeModal === 'username') || (isFirstTimePin && modalStep === 1)) && (
                 <>
                   <h3 className="text-2xl font-black mb-4">
-                    {activeModal === 'email' ? 'New Email Address' : activeModal === 'password' ? 'New Password' : activeModal === 'pin' ? (isFirstTimePin ? 'Set Transaction PIN' : 'New Transaction PIN') : 'New Username'}
+                    {activeModal === 'email' ? 'New Email Address' : 
+                     activeModal === 'password' ? 'New Password' : 
+                     activeModal === 'pin' ? (isFirstTimePin ? 'Set Transaction PIN' : 'Reset Transaction PIN') : 
+                     'New Username'}
                   </h3>
+                  
                   <div className="space-y-4 mb-6">
+                    {/* ✅ OLD PIN FIELD - ONLY for PIN RESET */}
+                    {isResetPin && (
+                      <>
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder="Old PIN (••••)"
+                          value={formData.oldPin}
+                          onChange={(e) => setFormData({ ...formData, oldPin: e.target.value.replace(/\D/g, '') })}
+                          className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none font-bold text-center text-xl"
+                        />
+                        <div className="h-px bg-gradient-to-r from-transparent via-salvaGold/30 to-transparent"></div>
+                      </>
+                    )}
+                    
+                    {/* NEW VALUE INPUT */}
                     <input
                       type={activeModal === 'password' ? 'password' : activeModal === 'pin' ? 'password' : 'text'}
                       inputMode={activeModal === 'pin' ? 'numeric' : 'text'}
                       maxLength={activeModal === 'pin' ? 4 : undefined}
-                      placeholder={activeModal === 'pin' ? '••••' : `Enter new ${activeModal}`}
+                      placeholder={activeModal === 'pin' ? 'New PIN (••••)' : `Enter new ${activeModal}`}
                       value={formData.newValue}
                       onChange={(e) => setFormData({ ...formData, newValue: activeModal === 'pin' ? e.target.value.replace(/\D/g, '') : e.target.value })}
                       className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none font-bold"
                     />
+                    
+                    {/* CONFIRM VALUE INPUT */}
                     <input
                       type={activeModal === 'password' ? 'password' : activeModal === 'pin' ? 'password' : 'text'}
                       inputMode={activeModal === 'pin' ? 'numeric' : 'text'}
                       maxLength={activeModal === 'pin' ? 4 : undefined}
-                      placeholder={activeModal === 'pin' ? '••••' : `Confirm new ${activeModal}`}
+                      placeholder={activeModal === 'pin' ? 'Confirm PIN (••••)' : `Confirm new ${activeModal}`}
                       value={formData.confirmValue}
                       onChange={(e) => setFormData({ ...formData, confirmValue: activeModal === 'pin' ? e.target.value.replace(/\D/g, '') : e.target.value })}
                       className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none font-bold"
                     />
                   </div>
+
+                  {/* ✅ SECURITY WARNING for PIN reset */}
+                  {isResetPin && (
+                    <div className="mb-6 p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl">
+                      <p className="text-xs text-orange-500 font-bold">
+                        ⚠️ If you've forgotten your old PIN, contact support. Without it, we cannot decrypt your wallet.
+                      </p>
+                    </div>
+                  )}
+                  
                   <div className="flex gap-3">
                     <button onClick={closeModal} className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 font-bold hover:bg-gray-100 dark:hover:bg-white/5">Cancel</button>
-                    <button onClick={handleSubmit} disabled={loading || !formData.newValue || !formData.confirmValue} className="flex-1 py-3 rounded-xl bg-salvaGold text-black font-bold hover:brightness-110 disabled:opacity-50">{loading ? 'UPDATING...' : 'CONFIRM'}</button>
+                    <button onClick={handleSubmit} disabled={loading || !formData.newValue || !formData.confirmValue || (isResetPin && !formData.oldPin)} className="flex-1 py-3 rounded-xl bg-salvaGold text-black font-bold hover:brightness-110 disabled:opacity-50">{loading ? 'UPDATING...' : 'CONFIRM'}</button>
                   </div>
                 </>
               )}
