@@ -48,7 +48,7 @@ mongoose.connect(process.env.MONGO_URI)
 // ===============================================
 async function delayBeforeBlockchain(message = "Preparing transaction...") {
   console.log(`⏳ ${message} (8-second safety delay)`);
-  await new Promise(resolve => setTimeout(resolve, 8000));
+  await new Promise(resolve => setTimeout(resolve, 5000));
   console.log(`✅ Delay complete, executing blockchain call...`);
 }
 
