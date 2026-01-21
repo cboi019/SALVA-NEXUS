@@ -15,6 +15,7 @@ const { GelatoRelay } = require("@gelatonetwork/relay-sdk");
 const Approval = require('./models/Approval');
 const { encryptPrivateKey, decryptPrivateKey, hashPin, verifyPin } = require('./utils/encryption');
 const crypto = require('crypto');
+const TransactionQueue = require('./models/TransactionQueue');
 
 // ===============================================
 // SECURITY PACKAGES
@@ -231,10 +232,22 @@ mongoose.connect(process.env.MONGO_URI)
 // ===============================================
 // HELPERS
 // ===============================================
-async function delayBeforeBlockchain(message = "Preparing transaction...") {
-  console.log(`⏳ ${message} (8-second safety delay)`);
-  await new Promise(resolve => setTimeout(resolve, 5000));
-  console.log(`✅ Delay complete, executing blockchain call...`);
+async function delayBeforeBlockchain(walletAddress, message = "Preparing transaction...") {
+  console.log(`⏳ ${message}`);
+  
+  // Check for active transactions
+  if (await hasActiveTransaction(walletAddress)) {
+    throw new Error('Another transaction is already in progress');
+  }
+
+  // Check cooldown
+  const cooldownStatus = await checkCooldown(walletAddress);
+  if (!cooldownStatus.ready) {
+    console.log(`⏱️ Cooldown active, waiting ${cooldownStatus.delay}s...`);
+    await new Promise(resolve => setTimeout(resolve, cooldownStatus.delay * 1000));
+  }
+
+  console.log(`✅ Queue clear, proceeding with transaction`);
 }
 
 async function checkGelatoTaskStatus(taskId, maxRetries = 20, delayMs = 2000) {
@@ -299,6 +312,62 @@ async function retryRPCCall(fn, maxRetries = 3, delay = 1000) {
       await new Promise(resolve => setTimeout(resolve, delay * (i + 1))); 
     }
   }
+}
+
+// Check if wallet has active transaction
+async function hasActiveTransaction(walletAddress) {
+  const activeStates = ['PENDING', 'SENDING'];
+  const activeTx = await TransactionQueue.findOne({
+    walletAddress: walletAddress.toLowerCase(),
+    status: { $in: activeStates }
+  });
+  return !!activeTx;
+}
+
+// Check cooldown status
+async function checkCooldown(walletAddress) {
+  const queue = await TransactionQueue.findOne({
+    walletAddress: walletAddress.toLowerCase()
+  }).sort({ updatedAt: -1 });
+
+  if (!queue) return { ready: true, delay: 0 };
+
+  const now = new Date();
+  
+  // If cooldown is set and still active
+  if (queue.cooldownUntil && queue.cooldownUntil > now) {
+    const waitTime = Math.ceil((queue.cooldownUntil - now) / 1000);
+    return { ready: false, delay: waitTime };
+  }
+
+  // Dynamic throttling based on recent activity
+  const timeSinceLastTx = (now - queue.updatedAt) / 1000; // in seconds
+  
+  if (timeSinceLastTx < 30) {
+    return { ready: false, delay: 15 }; // Wait 15s if last tx was recent
+  }
+  
+  if (timeSinceLastTx < 60) {
+    return { ready: false, delay: 5 }; // Wait 5s if moderate activity
+  }
+
+  return { ready: true, delay: 0 };
+}
+
+// Apply cooldown after transaction
+async function applyCooldown(walletAddress, seconds = 20) {
+  const cooldownUntil = new Date(Date.now() + (seconds * 1000));
+  await TransactionQueue.updateOne(
+    { 
+      walletAddress: walletAddress.toLowerCase(),
+      status: { $in: ['CONFIRMED', 'FAILED'] }
+    },
+    { 
+      cooldownUntil: cooldownUntil,
+      updatedAt: new Date()
+    },
+    { sort: { updatedAt: -1 } }
+  );
 }
 
 const { 
@@ -699,75 +768,117 @@ app.post('/api/transfer', async (req, res) => {
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
-    await delayBeforeBlockchain("Transfer queued");
+    // Create queue entry
+    const queueEntry = await new TransactionQueue({
+      walletAddress: safeAddress.toLowerCase(),
+      status: 'PENDING',
+      type: 'transfer',
+      payload: { toInput, amount, recipientAddress }
+    }).save();
 
-    const result = await sponsorSafeTransfer(
-      safeAddress, 
-      userPrivateKey, 
-      toInput, 
-      amountWei
-    );
+    try {
+      // Check queue
+      await delayBeforeBlockchain(safeAddress, "Transfer queued");
 
-    if (!result || !result.taskId) {
-      await new Transaction({
-        fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: senderAccountNumber,
-        toAddress: recipientAddress,
-        toAccountNumber: toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        amount: amount,
-        status: 'failed',
-        taskId: null,
-        type: 'transfer',
-        date: new Date()
-      }).save();
+      // Update to SENDING
+      queueEntry.status = 'SENDING';
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
 
-      return res.status(400).json({ 
-        success: false, 
-        message: "Transfer failed on blockchain" 
-      });
-    }
+      const result = await sponsorSafeTransfer(
+        safeAddress, 
+        userPrivateKey, 
+        toInput, 
+        amountWei
+      );
 
-    const taskStatus = await checkGelatoTaskStatus(result.taskId);
-    
-    if (taskStatus.success) {
-      await new Transaction({
-        fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: senderAccountNumber,
-        toAddress: recipientAddress,
-        toAccountNumber: toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        amount: amount,
-        status: 'successful',
-        taskId: result.taskId,
-        type: 'transfer',
-        date: new Date()
-      }).save();
-    } else {
-      await new Transaction({
-        fromAddress: safeAddress.toLowerCase(),
-        fromAccountNumber: senderAccountNumber,
-        toAddress: recipientAddress,
-        toAccountNumber: toInput,
-        senderDisplayIdentifier: senderDisplayIdentifier,
-        amount: amount,
-        status: 'failed',
-        taskId: result.taskId,
-        type: 'transfer',
-        date: new Date()
-      }).save();
+      if (!result || !result.taskId) {
+        queueEntry.status = 'FAILED';
+        queueEntry.errorMessage = 'Failed to submit to relay';
+        await queueEntry.save();
+
+        await new Transaction({
+          fromAddress: safeAddress.toLowerCase(),
+          fromAccountNumber: senderAccountNumber,
+          toAddress: recipientAddress,
+          toAccountNumber: toInput,
+          senderDisplayIdentifier: senderDisplayIdentifier,
+          amount: amount,
+          status: 'failed',
+          taskId: null,
+          type: 'transfer',
+          date: new Date()
+        }).save();
+
+        return res.status(400).json({ 
+          success: false, 
+          message: "Transfer failed on blockchain" 
+        });
+      }
+
+      queueEntry.taskId = result.taskId;
+      await queueEntry.save();
+
+      const taskStatus = await checkGelatoTaskStatus(result.taskId);
       
-      return res.status(400).json({ 
-        success: false, 
-        message: taskStatus.reason || "Transfer reverted on blockchain"
-      });
-    }
+      if (taskStatus.success) {
+        queueEntry.status = 'CONFIRMED';
+        queueEntry.updatedAt = new Date();
+        await queueEntry.save();
 
-    res.json({ success: true, taskId: result.taskId });
+        await new Transaction({
+          fromAddress: safeAddress.toLowerCase(),
+          fromAccountNumber: senderAccountNumber,
+          toAddress: recipientAddress,
+          toAccountNumber: toInput,
+          senderDisplayIdentifier: senderDisplayIdentifier,
+          amount: amount,
+          status: 'successful',
+          taskId: result.taskId,
+          type: 'transfer',
+          date: new Date()
+        }).save();
+
+        // Apply cooldown
+        await applyCooldown(safeAddress, 20);
+      } else {
+        queueEntry.status = 'FAILED';
+        queueEntry.errorMessage = taskStatus.reason;
+        queueEntry.updatedAt = new Date();
+        await queueEntry.save();
+
+        await new Transaction({
+          fromAddress: safeAddress.toLowerCase(),
+          fromAccountNumber: senderAccountNumber,
+          toAddress: recipientAddress,
+          toAccountNumber: toInput,
+          senderDisplayIdentifier: senderDisplayIdentifier,
+          amount: amount,
+          status: 'failed',
+          taskId: result.taskId,
+          type: 'transfer',
+          date: new Date()
+        }).save();
+        
+        return res.status(400).json({ 
+          success: false, 
+          message: taskStatus.reason || "Transfer reverted on blockchain"
+        });
+      }
+
+      res.json({ success: true, taskId: result.taskId });
+
+    } catch (error) {
+      queueEntry.status = 'FAILED';
+      queueEntry.errorMessage = error.message;
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
+      throw error;
+    }
 
   } catch (error) {
     console.error("❌ Transfer failed:", error.message);
-    return handleError(error, res, 'Transfer failed');
+    return handleError(error, res, error.message || 'Transfer failed');
   }
 });
 
@@ -778,7 +889,6 @@ app.post('/api/approve', async (req, res) => {
   try {
     const { userPrivateKey, safeAddress, spenderInput, amount } = req.body;
     
-    // ✅ FIX: Allow 0 for revocations
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount < 0 || numAmount > 1000000000) {
       return res.status(400).json({ message: 'Invalid amount' });
@@ -792,48 +902,85 @@ app.post('/api/approve', async (req, res) => {
     }
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
-    
-    await delayBeforeBlockchain("Approval queued");
 
-    const result = await sponsorSafeApprove(safeAddress, userPrivateKey, finalSpenderAddress, amountWei);
+    // Create queue entry
+    const queueEntry = await new TransactionQueue({
+      walletAddress: safeAddress.toLowerCase(),
+      status: 'PENDING',
+      type: 'approve',
+      payload: { spenderInput, amount, finalSpenderAddress }
+    }).save();
 
-    if (!result || !result.taskId) {
-      return res.status(400).json({ message: "Approval failed to submit" });
-    }
+    try {
+      await delayBeforeBlockchain(safeAddress, "Approval queued");
 
-    const taskStatus = await checkGelatoTaskStatus(result.taskId);
-    if (!taskStatus.success) {
-      return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
-    }
+      queueEntry.status = 'SENDING';
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
 
-    const inputType = isAccountNumber(spenderInput) ? 'accountNumber' : 'address';
-    
-    // ✅ If amount is 0, delete the approval record
-    if (numAmount === 0) {
-      await Approval.deleteOne({
-        owner: safeAddress.toLowerCase(), 
-        spender: finalSpenderAddress.toLowerCase()
-      });
-    } else {
-      await Approval.findOneAndUpdate(
-        { 
+      const result = await sponsorSafeApprove(safeAddress, userPrivateKey, finalSpenderAddress, amountWei);
+
+      if (!result || !result.taskId) {
+        queueEntry.status = 'FAILED';
+        queueEntry.errorMessage = 'Failed to submit';
+        await queueEntry.save();
+        return res.status(400).json({ message: "Approval failed to submit" });
+      }
+
+      queueEntry.taskId = result.taskId;
+      await queueEntry.save();
+
+      const taskStatus = await checkGelatoTaskStatus(result.taskId);
+      
+      if (!taskStatus.success) {
+        queueEntry.status = 'FAILED';
+        queueEntry.errorMessage = taskStatus.reason;
+        queueEntry.updatedAt = new Date();
+        await queueEntry.save();
+        return res.status(400).json({ success: false, message: taskStatus.reason || "Approval reverted" });
+      }
+
+      queueEntry.status = 'CONFIRMED';
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
+
+      const inputType = isAccountNumber(spenderInput) ? 'accountNumber' : 'address';
+      
+      if (numAmount === 0) {
+        await Approval.deleteOne({
           owner: safeAddress.toLowerCase(), 
           spender: finalSpenderAddress.toLowerCase()
-        },
-        { 
-          amount: amount, 
-          date: new Date(),
-          spenderInput: spenderInput,
-          spenderInputType: inputType
-        },
-        { upsert: true, new: true }
-      );
+        });
+      } else {
+        await Approval.findOneAndUpdate(
+          { 
+            owner: safeAddress.toLowerCase(), 
+            spender: finalSpenderAddress.toLowerCase()
+          },
+          { 
+            amount: amount, 
+            date: new Date(),
+            spenderInput: spenderInput,
+            spenderInputType: inputType
+          },
+          { upsert: true, new: true }
+        );
+      }
+
+      await applyCooldown(safeAddress, 20);
+      res.json({ success: true, taskId: result.taskId });
+
+    } catch (error) {
+      queueEntry.status = 'FAILED';
+      queueEntry.errorMessage = error.message;
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
+      throw error;
     }
 
-    res.json({ success: true, taskId: result.taskId });
   } catch (error) {
     console.error("Approval Error:", error);
-    return handleError(error, res, 'Approval failed');
+    return handleError(error, res, error.message || 'Approval failed');
   }
 });
 
@@ -903,17 +1050,67 @@ app.post('/api/transferFrom', async (req, res) => {
     const fromInputWasAccountNumber = isAccountNumber(fromInput);
     let senderDisplayIdentifier = fromInputWasAccountNumber ? fromInput : fromAddress;
 
-    await delayBeforeBlockchain("TransferFrom queued");
+    // Create queue entry
+    const queueEntry = await new TransactionQueue({
+      walletAddress: safeAddress.toLowerCase(),
+      status: 'PENDING',
+      type: 'transferFrom',
+      payload: { fromInput, toInput, amount, fromAddress, toAddress }
+    }).save();
 
-    const result = await sponsorSafeTransferFrom(
-      userPrivateKey,
-      safeAddress,
-      fromAddress,
-      toAddress,
-      amountWei
-    );
+    try {
+      await delayBeforeBlockchain(safeAddress, "TransferFrom queued");
 
-    if (!result || !result.taskId) {
+      queueEntry.status = 'SENDING';
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
+
+      const result = await sponsorSafeTransferFrom(
+        userPrivateKey,
+        safeAddress,
+        fromAddress,
+        toAddress,
+        amountWei
+      );
+
+      if (!result || !result.taskId) {
+        queueEntry.status = 'FAILED';
+        queueEntry.errorMessage = 'Failed to submit';
+        await queueEntry.save();
+
+        await new Transaction({
+          fromAddress: fromAddress,
+          fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
+          toAddress: toAddress,
+          toAccountNumber: toInput,
+          senderDisplayIdentifier: senderDisplayIdentifier,
+          executorAddress: safeAddress.toLowerCase(),
+          amount: amount,
+          status: 'failed',
+          taskId: null,
+          type: 'transferFrom',
+          date: new Date()
+        }).save();
+        
+        return res.status(400).json({ success: false, message: "Transfer failed to submit" });
+      }
+
+      queueEntry.taskId = result.taskId;
+      await queueEntry.save();
+
+      const taskStatus = await checkGelatoTaskStatus(result.taskId);
+      
+      if (taskStatus.success) {
+        queueEntry.status = 'CONFIRMED';
+        queueEntry.updatedAt = new Date();
+        await queueEntry.save();
+      } else {
+        queueEntry.status = 'FAILED';
+        queueEntry.errorMessage = taskStatus.reason;
+        queueEntry.updatedAt = new Date();
+        await queueEntry.save();
+      }
+
       await new Transaction({
         fromAddress: fromAddress,
         fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
@@ -922,43 +1119,33 @@ app.post('/api/transferFrom', async (req, res) => {
         senderDisplayIdentifier: senderDisplayIdentifier,
         executorAddress: safeAddress.toLowerCase(),
         amount: amount,
-        status: 'failed',
-        taskId: null,
+        status: taskStatus.success ? 'successful' : 'failed',
         type: 'transferFrom',
+        taskId: result.taskId,
         date: new Date()
       }).save();
-      
-      return res.status(400).json({ success: false, message: "Transfer failed to submit" });
+
+      if (!taskStatus.success) {
+        return res.status(400).json({
+          success: false, 
+          message: taskStatus.reason || "Transfer reverted"
+        });
+      }
+
+      await applyCooldown(safeAddress, 20);
+      res.json({ success: true, taskId: result.taskId });
+
+    } catch (error) {
+      queueEntry.status = 'FAILED';
+      queueEntry.errorMessage = error.message;
+      queueEntry.updatedAt = new Date();
+      await queueEntry.save();
+      throw error;
     }
-
-    const taskStatus = await checkGelatoTaskStatus(result.taskId);
-    
-    await new Transaction({
-      fromAddress: fromAddress,
-      fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
-      toAddress: toAddress,
-      toAccountNumber: toInput,
-      senderDisplayIdentifier: senderDisplayIdentifier,
-      executorAddress: safeAddress.toLowerCase(),
-      amount: amount,
-      status: taskStatus.success ? 'successful' : 'failed',
-      type: 'transferFrom',
-      taskId: result.taskId,
-      date: new Date()
-    }).save();
-
-    if (!taskStatus.success) {
-      return res.status(400).json({
-        success: false, 
-        message: taskStatus.reason || "Transfer reverted"
-      });
-    }
-
-    res.json({ success: true, taskId: result.taskId });
 
   } catch (error) {
     console.error("❌ TransferFrom failed:", error.message);
-    return handleError(error, res, 'Transfer failed');
+    return handleError(error, res, error.message || 'Transfer failed');
   }
 });
 
