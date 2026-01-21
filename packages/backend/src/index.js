@@ -28,6 +28,7 @@ const {
 const crypto = require("crypto");
 const TransactionQueue = require("./models/TransactionQueue");
 const {
+  sendWelcomeEmail,
   sendTransactionEmailToSender,
   sendTransactionEmailToReceiver,
   sendSecurityChangeEmail,
@@ -563,7 +564,7 @@ app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
 });
 
 // ===============================================
-// REGISTRATION
+// REPLACE THE /api/register ROUTE WITH THIS
 // ===============================================
 app.post(
   "/api/register",
@@ -613,6 +614,14 @@ app.post(
 
       await newUser.save();
       console.log("✅ User saved to database");
+
+      // ✅ SEND WELCOME EMAIL (Only after successful registration)
+      try {
+        await sendWelcomeEmail(email, username);
+      } catch (emailError) {
+        console.error("❌ Welcome email error:", emailError.message);
+        // Don't fail registration if email fails
+      }
 
       res.json({
         username: newUser.username,
@@ -850,7 +859,7 @@ app.get("/api/allowances-for/:address", async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER - FIXED VERSION
+// REPLACE THE /api/transfer ROUTE WITH THIS
 // ===============================================
 app.post("/api/transfer", async (req, res) => {
   try {
@@ -878,10 +887,8 @@ app.post("/api/transfer", async (req, res) => {
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
-    // ✅ CHECK QUEUE FIRST (before creating entry)
     await delayBeforeBlockchain(safeAddress, "Transfer queued");
 
-    // ✅ NOW create queue entry (after check passes)
     const queueEntry = await new TransactionQueue({
       walletAddress: safeAddress.toLowerCase(),
       status: "PENDING",
@@ -890,7 +897,6 @@ app.post("/api/transfer", async (req, res) => {
     }).save();
 
     try {
-      // Update to SENDING
       queueEntry.status = "SENDING";
       queueEntry.updatedAt = new Date();
       await queueEntry.save();
@@ -949,34 +955,39 @@ app.post("/api/transfer", async (req, res) => {
           date: new Date(),
         }).save();
 
-        // ✅ SEND EMAILS TO BOTH PARTIES
-        const senderUser = await User.findOne({
-          safeAddress: safeAddress.toLowerCase(),
-        });
-        const receiverUser = await User.findOne({
-          safeAddress: recipientAddress.toLowerCase(),
-        });
-
-        if (senderUser && senderUser.email) {
-          sendTransactionEmailToSender(
-            senderUser.email,
-            senderUser.username,
-            toInput,
-            amount,
-            "successful",
-          ).catch((err) => console.error("Email send error:", err));
-        }
-
-        if (receiverUser && receiverUser.email) {
-          sendTransactionEmailToReceiver(
-            receiverUser.email,
-            receiverUser.username,
-            senderDisplayIdentifier,
-            amount,
-          ).catch((err) => console.error("Email send error:", err));
-        }
-        // Apply cooldown
         await applyCooldown(safeAddress, 20);
+
+        // ✅ SEND EMAILS (Only on Success)
+        try {
+          const senderUser = await User.findOne({
+            safeAddress: safeAddress.toLowerCase(),
+          });
+          const receiverUser = await User.findOne({
+            safeAddress: recipientAddress.toLowerCase(),
+          });
+
+          if (senderUser && senderUser.email) {
+            await sendTransactionEmailToSender(
+              senderUser.email,
+              senderUser.username,
+              toInput,
+              amount,
+              "successful",
+            );
+          }
+
+          if (receiverUser && receiverUser.email) {
+            await sendTransactionEmailToReceiver(
+              receiverUser.email,
+              receiverUser.username,
+              senderDisplayIdentifier,
+              amount,
+            );
+          }
+        } catch (emailError) {
+          console.error("❌ Email notification error:", emailError.message);
+          // Don't fail the transaction if email fails
+        }
       } else {
         queueEntry.status = "FAILED";
         queueEntry.errorMessage = taskStatus.reason;
@@ -1037,10 +1048,8 @@ app.post("/api/approve", async (req, res) => {
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // ✅ CHECK FIRST
     await delayBeforeBlockchain(safeAddress, "Approval queued");
 
-    // ✅ THEN CREATE
     const queueEntry = await new TransactionQueue({
       walletAddress: safeAddress.toLowerCase(),
       status: "PENDING",
@@ -1077,10 +1086,12 @@ app.post("/api/approve", async (req, res) => {
         queueEntry.errorMessage = taskStatus.reason;
         queueEntry.updatedAt = new Date();
         await queueEntry.save();
-        return res.status(400).json({
-          success: false,
-          message: taskStatus.reason || "Approval reverted",
-        });
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: taskStatus.reason || "Approval reverted",
+          });
       }
 
       queueEntry.status = "CONFIRMED";
@@ -1112,21 +1123,40 @@ app.post("/api/approve", async (req, res) => {
         );
       }
 
-      // ✅ SEND EMAIL TO APPROVER
-      const approverUser = await User.findOne({
-        safeAddress: safeAddress.toLowerCase(),
-      });
-      if (approverUser && approverUser.email) {
-        sendTransactionEmailToSender(
-          approverUser.email,
-          approverUser.username,
-          spenderInput,
-          amount,
-          "successful",
-        ).catch((err) => console.error("Email send error:", err));
+      await applyCooldown(safeAddress, 20);
+
+      // ✅ SEND EMAIL (Only on Success)
+      try {
+        const approverUser = await User.findOne({
+          safeAddress: safeAddress.toLowerCase(),
+        });
+        const spenderUser = await User.findOne({
+          safeAddress: finalSpenderAddress.toLowerCase(),
+        });
+
+        if (approverUser && approverUser.email) {
+          await sendTransactionEmailToSender(
+            approverUser.email,
+            approverUser.username,
+            spenderInput,
+            amount,
+            "successful",
+          );
+        }
+
+        // Optionally notify spender
+        if (spenderUser && spenderUser.email && numAmount > 0) {
+          await sendTransactionEmailToReceiver(
+            spenderUser.email,
+            spenderUser.username,
+            approverUser.username || safeAddress,
+            amount,
+          );
+        }
+      } catch (emailError) {
+        console.error("❌ Email notification error:", emailError.message);
       }
 
-      await applyCooldown(safeAddress, 20);
       res.json({ success: true, taskId: result.taskId });
     } catch (error) {
       queueEntry.status = "FAILED";
@@ -1217,10 +1247,8 @@ app.post("/api/transferFrom", async (req, res) => {
       ? fromInput
       : fromAddress;
 
-    // ✅ CHECK FIRST
     await delayBeforeBlockchain(safeAddress, "TransferFrom queued");
 
-    // ✅ THEN CREATE
     const queueEntry = await new TransactionQueue({
       walletAddress: safeAddress.toLowerCase(),
       status: "PENDING",
@@ -1302,37 +1330,42 @@ app.post("/api/transferFrom", async (req, res) => {
         });
       }
 
-      // ✅ SEND EMAILS TO ALL PARTIES (only if successful)
-      const executorUser = await User.findOne({
-        safeAddress: safeAddress.toLowerCase(),
-      });
-      const fromUser = await User.findOne({
-        safeAddress: fromAddress.toLowerCase(),
-      });
-      const toUser = await User.findOne({
-        safeAddress: toAddress.toLowerCase(),
-      });
-
-      if (executorUser && executorUser.email) {
-        sendTransactionEmailToSender(
-          executorUser.email,
-          executorUser.username,
-          toInput,
-          amount,
-          "successful",
-        ).catch((err) => console.error("Email send error:", err));
-      }
-
-      if (toUser && toUser.email) {
-        sendTransactionEmailToReceiver(
-          toUser.email,
-          toUser.username,
-          fromInput,
-          amount,
-        ).catch((err) => console.error("Email send error:", err));
-      }
-
       await applyCooldown(safeAddress, 20);
+
+      // ✅ SEND EMAILS (Only on Success)
+      try {
+        const fromUser = await User.findOne({
+          safeAddress: fromAddress.toLowerCase(),
+        });
+        const toUser = await User.findOne({
+          safeAddress: toAddress.toLowerCase(),
+        });
+        const executorUser = await User.findOne({
+          safeAddress: safeAddress.toLowerCase(),
+        });
+
+        if (fromUser && fromUser.email) {
+          await sendTransactionEmailToSender(
+            fromUser.email,
+            fromUser.username,
+            toInput,
+            amount,
+            "successful",
+          );
+        }
+
+        if (toUser && toUser.email) {
+          await sendTransactionEmailToReceiver(
+            toUser.email,
+            toUser.username,
+            fromInput,
+            amount,
+          );
+        }
+      } catch (emailError) {
+        console.error("❌ Email notification error:", emailError.message);
+      }
+
       res.json({ success: true, taskId: result.taskId });
     } catch (error) {
       queueEntry.status = "FAILED";
@@ -1528,13 +1561,20 @@ app.post("/api/user/reset-pin", authLimiter, async (req, res) => {
 
     delete otpStore[sanitizedEmail];
 
-    // ✅ SEND SECURITY ALERT
-    sendSecurityChangeEmail(
-      sanitizedEmail,
-      user.username,
-      "pin",
-      user.accountNumber,
-    ).catch((err) => console.error("Email send error:", err));
+    // ✅ SEND SECURITY EMAIL
+    try {
+      const accountNum =
+        (await getAccountNumberFromAddress(user.safeAddress)) ||
+        user.safeAddress;
+      await sendSecurityChangeEmail(
+        sanitizedEmail,
+        user.username,
+        "pin",
+        accountNum,
+      );
+    } catch (emailError) {
+      console.error("❌ Security email error:", emailError.message);
+    }
 
     console.log(`✅ PIN reset for user: ${sanitizedEmail}`);
     res.json({
@@ -1577,13 +1617,20 @@ app.post("/api/user/update-email", authLimiter, async (req, res) => {
 
     delete otpStore[sanitizedOldEmail];
 
-    // ✅ SEND SECURITY ALERT TO NEW EMAIL
-    sendSecurityChangeEmail(
-      sanitizedNewEmail,
-      user.username,
-      "email",
-      user.accountNumber,
-    ).catch((err) => console.error("Email send error:", err));
+    // ✅ SEND SECURITY EMAIL
+    try {
+      const accountNum =
+        (await getAccountNumberFromAddress(user.safeAddress)) ||
+        user.safeAddress;
+      await sendSecurityChangeEmail(
+        sanitizedNewEmail,
+        user.username,
+        "email",
+        accountNum,
+      );
+    } catch (emailError) {
+      console.error("❌ Security email error:", emailError.message);
+    }
 
     res.json({
       success: true,
@@ -1627,13 +1674,20 @@ app.post("/api/user/update-password", authLimiter, async (req, res) => {
 
     delete otpStore[sanitizedEmail];
 
-    // ✅ SEND SECURITY ALERT
-    sendSecurityChangeEmail(
-      sanitizedEmail,
-      user.username,
-      "password",
-      user.accountNumber,
-    ).catch((err) => console.error("Email send error:", err));
+    // ✅ SEND SECURITY EMAIL
+    try {
+      const accountNum =
+        (await getAccountNumberFromAddress(user.safeAddress)) ||
+        user.safeAddress;
+      await sendSecurityChangeEmail(
+        sanitizedEmail,
+        user.username,
+        "password",
+        accountNum,
+      );
+    } catch (emailError) {
+      console.error("❌ Security email error:", emailError.message);
+    }
 
     res.json({
       success: true,

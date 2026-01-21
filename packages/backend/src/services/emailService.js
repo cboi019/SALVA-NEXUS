@@ -1,23 +1,6 @@
 // Salva-Digital-Tech/packages/backend/src/services/emailService.js
-const nodemailer = require('nodemailer');
-
-// Create reusable transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER_2,
-    pass: process.env.EMAIL_PASS
-  }
-});
-
-// Verify connection on startup
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('❌ Email service connection failed:', error);
-  } else {
-    console.log('✅ Email service ready');
-  }
-});
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Format number with commas
 const formatAmount = (amount) => {
@@ -26,6 +9,97 @@ const formatAmount = (amount) => {
     maximumFractionDigits: 2 
   });
 };
+
+// ===============================================
+// WELCOME EMAIL - NEW USER REGISTRATION
+// ===============================================
+async function sendWelcomeEmail(userEmail, userName) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <body style="margin: 0; padding: 0; background-color: #F3F4F6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <div style="max-width: 600px; margin: 40px auto; background: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 40px; text-align: center;">
+          <h1 style="margin: 0; color: #0A0A0B; font-size: 36px; font-weight: 900; letter-spacing: 3px;">SALVA</h1>
+          <p style="margin: 8px 0 0 0; color: #0A0A0B; opacity: 0.8; font-size: 13px; text-transform: uppercase; letter-spacing: 2px; font-weight: 600;">Digital Finance Platform</p>
+        </div>
+        
+        <!-- Welcome Badge -->
+        <div style="padding: 32px 40px 24px 40px;">
+          <div style="background: #10B981; color: white; padding: 14px 24px; border-radius: 12px; text-align: center; font-weight: 900; font-size: 15px; letter-spacing: 1.5px;">
+            WELCOME TO SALVA 👋
+          </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div style="padding: 0 40px 32px 40px;">
+          <p style="color: #1F2937; font-size: 17px; margin: 0 0 12px 0; font-weight: 600;">Hi ${userName},</p>
+          <p style="color: #6B7280; font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
+            Your account has been successfully created, and your wallet is now ready to use.
+          </p>
+          
+          <p style="color: #6B7280; font-size: 15px; margin: 0 0 32px 0; line-height: 1.6;">
+            SALVA is built to make crypto feel familiar — with simple account aliases, strong security, and transactions designed for everyday use.
+          </p>
+          
+          <!-- Features Box -->
+          <div style="background: #F9FAFB; border: 2px solid #E5E7EB; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+            <p style="color: #1F2937; font-size: 15px; margin: 0 0 16px 0; font-weight: 700;">Here's what you can do next:</p>
+            <ul style="margin: 0; padding-left: 20px; color: #6B7280; font-size: 14px; line-height: 2;">
+              <li><strong>Receive NGNs</strong> and make transfers with ease</li>
+              <li>Explore a wallet designed for <strong>real-world payments</strong></li>
+            </ul>
+          </div>
+          
+          <!-- Security Reminder Box -->
+          <div style="background: #ECFDF5; border-left: 4px solid #10B981; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+            <p style="color: #065F46; font-size: 14px; margin: 0 0 8px 0; font-weight: 700;">🔐 Security reminder</p>
+            <p style="color: #047857; font-size: 13px; margin: 0; line-height: 1.6;">
+              SALVA will never ask for your password, PIN, or private keys. If you ever notice suspicious activity, contact support immediately.
+            </p>
+          </div>
+          
+          <p style="color: #6B7280; font-size: 15px; margin: 0; line-height: 1.6; text-align: center;">
+            We're excited to have you on board.<br>
+            <strong style="color: #1F2937;">Welcome to the future of everyday crypto.</strong>
+          </p>
+          
+          <p style="color: #9CA3AF; font-size: 14px; margin: 24px 0 0 0; text-align: center; font-style: italic;">
+            — The SALVA Team
+          </p>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: #F9FAFB; padding: 24px 40px; border-top: 1px solid #E5E7EB;">
+          <p style="color: #9CA3AF; font-size: 13px; margin: 0 0 16px 0; text-align: center;">
+            This is an automated message. If you need help, contact us:
+          </p>
+          <div style="text-align: center;">
+            <a href="mailto:salva.notify@gmail.com" 
+               style="display: inline-block; background: #D4AF37; color: #0A0A0B; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 14px; letter-spacing: 0.5px;">
+              Contact Support
+            </a>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    await resend.emails.send({
+      from: 'Salva <no-reply@salva-nexus.org>',
+      to: userEmail,
+      subject: 'Welcome to SALVA — your account is ready',
+      html: html
+    });
+    console.log(`📧 Welcome email sent to: ${userEmail}`);
+  } catch (error) {
+    console.error('❌ Failed to send welcome email:', error.message);
+  }
+}
 
 // ===============================================
 // TRANSACTION EMAIL - SENDER
@@ -103,8 +177,8 @@ async function sendTransactionEmailToSender(senderEmail, senderName, recipientId
   `;
 
   try {
-    await transporter.sendMail({
-      from: `"SALVA" <${process.env.EMAIL_USER_2}>`,
+    await resend.emails.send({
+      from: 'Salva <no-reply@salva-nexus.org>',
       to: senderEmail,
       subject: subject,
       html: html
@@ -176,8 +250,8 @@ async function sendTransactionEmailToReceiver(receiverEmail, receiverName, sende
   `;
 
   try {
-    await transporter.sendMail({
-      from: `"SALVA" <${process.env.EMAIL_USER_2}>`,
+    await resend.emails.send({
+      from: 'Salva <no-reply@salva-nexus.org>',
       to: receiverEmail,
       subject: '💰 Payment Received - SALVA',
       html: html
@@ -268,8 +342,8 @@ async function sendSecurityChangeEmail(userEmail, userName, changeType, accountN
   `;
 
   try {
-    await transporter.sendMail({
-      from: `"SALVA Security" <${process.env.EMAIL_USER_2}>`,
+    await resend.emails.send({
+      from: 'Salva Security <no-reply@salva-nexus.org>',
       to: userEmail,
       subject: `🔒 Security Alert: ${changeTypeText[changeType]} Changed - SALVA`,
       html: html
@@ -281,6 +355,7 @@ async function sendSecurityChangeEmail(userEmail, userName, changeType, accountN
 }
 
 module.exports = {
+  sendWelcomeEmail,
   sendTransactionEmailToSender,
   sendTransactionEmailToReceiver,
   sendSecurityChangeEmail
