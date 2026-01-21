@@ -228,6 +228,7 @@ setInterval(() => {
 mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log('🍃 MongoDB Connected'))
   .catch(err => console.error('❌ MongoDB Connection Failed:', err));
+  
 
 // ===============================================
 // HELPERS
@@ -368,6 +369,20 @@ async function applyCooldown(walletAddress, seconds = 20) {
     },
     { sort: { updatedAt: -1 } }
   );
+}
+
+async function cleanupStaleQueueEntries() {
+  const STALE_THRESHOLD = 10 * 60 * 1000; // 10 minutes
+  const staleDate = new Date(Date.now() - STALE_THRESHOLD);
+  
+  const result = await TransactionQueue.deleteMany({
+    status: { $in: ['PENDING', 'SENDING'] },
+    createdAt: { $lt: staleDate }
+  });
+  
+  if (result.deletedCount > 0) {
+    console.log(`🧹 Cleaned up ${result.deletedCount} stale queue entries`);
+  }
 }
 
 const { 
@@ -1505,7 +1520,13 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   ✅ PBKDF2 encryption (600k iterations)`);
   console.log(`   ✅ Constant-time comparisons`);
   console.log(`   ✅ Environment-based CORS`);
+
+    // ✅ START CLEANUP HERE (after everything is loaded)
+  setInterval(cleanupStaleQueueEntries, 5 * 60 * 1000);
+  console.log(`   ✅ Transaction queue cleanup (every 5 minutes)`);
 });
+
+
 
 // ===============================================
 // KEEP-ALIVE (Update with your actual domain)
