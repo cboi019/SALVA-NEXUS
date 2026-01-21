@@ -749,7 +749,7 @@ return (
         {isTransactionPending && (
           <motion.div 
             initial={{ opacity: 0 }}
-            animate={{ opacity: 0.8 }}
+            animate={{ opacity: 0.9 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-lg"
           >
