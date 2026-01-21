@@ -46,6 +46,7 @@ const Dashboard = () => {
         fetchApprovals(parsedUser.safeAddress);
         fetchIncomingAllowances(parsedUser.safeAddress);
         const interval = setInterval(() => {
+          fetchBalance(parsedUser.safeAddress);
           fetchTransactions(parsedUser.safeAddress); // ✅ ADD THIS
           fetchApprovals(parsedUser.safeAddress, true);
           fetchIncomingAllowances(parsedUser.safeAddress, true);
