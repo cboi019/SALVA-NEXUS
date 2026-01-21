@@ -741,7 +741,7 @@ app.get('/api/allowances-for/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER
+// TRANSFER - FIXED VERSION
 // ===============================================
 app.post('/api/transfer', async (req, res) => {
   try {
@@ -768,7 +768,10 @@ app.post('/api/transfer', async (req, res) => {
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
-    // Create queue entry
+    // ✅ CHECK QUEUE FIRST (before creating entry)
+    await delayBeforeBlockchain(safeAddress, "Transfer queued");
+
+    // ✅ NOW create queue entry (after check passes)
     const queueEntry = await new TransactionQueue({
       walletAddress: safeAddress.toLowerCase(),
       status: 'PENDING',
@@ -777,9 +780,6 @@ app.post('/api/transfer', async (req, res) => {
     }).save();
 
     try {
-      // Check queue
-      await delayBeforeBlockchain(safeAddress, "Transfer queued");
-
       // Update to SENDING
       queueEntry.status = 'SENDING';
       queueEntry.updatedAt = new Date();
@@ -883,7 +883,7 @@ app.post('/api/transfer', async (req, res) => {
 });
 
 // ===============================================
-// APPROVE
+// APPROVE - FIXED VERSION
 // ===============================================
 app.post('/api/approve', async (req, res) => {
   try {
@@ -903,7 +903,10 @@ app.post('/api/approve', async (req, res) => {
 
     const amountWei = ethers.parseUnits(amount.toString(), 6);
 
-    // Create queue entry
+    // ✅ CHECK FIRST
+    await delayBeforeBlockchain(safeAddress, "Approval queued");
+
+    // ✅ THEN CREATE
     const queueEntry = await new TransactionQueue({
       walletAddress: safeAddress.toLowerCase(),
       status: 'PENDING',
@@ -912,8 +915,6 @@ app.post('/api/approve', async (req, res) => {
     }).save();
 
     try {
-      await delayBeforeBlockchain(safeAddress, "Approval queued");
-
       queueEntry.status = 'SENDING';
       queueEntry.updatedAt = new Date();
       await queueEntry.save();
@@ -1025,7 +1026,7 @@ app.get('/api/transactions/:address', async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM
+// TRANSFER FROM - FIXED VERSION
 // ===============================================
 app.post('/api/transferFrom', async (req, res) => {
   try {
@@ -1050,7 +1051,10 @@ app.post('/api/transferFrom', async (req, res) => {
     const fromInputWasAccountNumber = isAccountNumber(fromInput);
     let senderDisplayIdentifier = fromInputWasAccountNumber ? fromInput : fromAddress;
 
-    // Create queue entry
+    // ✅ CHECK FIRST
+    await delayBeforeBlockchain(safeAddress, "TransferFrom queued");
+
+    // ✅ THEN CREATE
     const queueEntry = await new TransactionQueue({
       walletAddress: safeAddress.toLowerCase(),
       status: 'PENDING',
@@ -1059,8 +1063,6 @@ app.post('/api/transferFrom', async (req, res) => {
     }).save();
 
     try {
-      await delayBeforeBlockchain(safeAddress, "TransferFrom queued");
-
       queueEntry.status = 'SENDING';
       queueEntry.updatedAt = new Date();
       await queueEntry.save();
