@@ -1,7 +1,7 @@
 // Salva-Digital-Tech/packages/frontend/src/pages/Home.jsx
 import React, { useState, useEffect } from 'react';
 import { motion, animate, AnimatePresence } from 'framer-motion';
-import { Instagram, Github, Mail, X, ChevronDown, CheckCircle, Activity } from 'lucide-react';
+import { Instagram, Github, Mail, X, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Stars from '../components/Stars';
 
@@ -82,7 +82,6 @@ const Home = () => {
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [isSupportOpen, setIsSupportOpen] = useState(false);
-  const [systemStatus, setSystemStatus] = useState('checking');
 
   const navigate = useNavigate();
 
@@ -117,10 +116,8 @@ const Home = () => {
           totalMinted: parseFloat(data.totalMinted || 0), 
           userCount: parseInt(data.userCount || 0) 
         });
-        setSystemStatus('operational');
         setLoading(false);
       } catch (err) {
-        setSystemStatus('syncing');
         setLoading(false);
       }
     };
@@ -157,24 +154,8 @@ const Home = () => {
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white transition-colors duration-500 overflow-x-hidden">
       <Stars />
 
-      {/* --- System Status Bar --- */}
-      <div className="fixed top-0 w-full z-50 bg-white/80 dark:bg-black/40 backdrop-blur-xl border-b border-gray-100 dark:border-white/5 py-3 px-6 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className={`w-2 h-2 rounded-full animate-pulse ${systemStatus === 'operational' ? 'bg-green-500 shadow-[0_0_12px_#22c55e]' : 'bg-yellow-500 shadow-[0_0_12px_#eab308]'}`} />
-          <span className="text-[10px] font-black uppercase tracking-[0.25em] opacity-80">
-            L2 Infrastructure: {systemStatus === 'operational' ? 'Operational' : 'Node Syncing'}
-          </span>
-        </div>
-        <div className="flex items-center gap-6">
-           <div className="hidden sm:flex items-center gap-2">
-             <Activity size={12} className="text-salvaGold" />
-             <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest">Base Mainnet</span>
-           </div>
-        </div>
-      </div>
-
       {/* Hero Section */}
-      <section className="relative pt-48 pb-12 sm:pb-20 px-4 sm:px-6 text-center">
+      <section className="relative pt-32 sm:pt-48 pb-12 sm:pb-20 px-4 sm:px-6 text-center">
         <motion.div {...fadeIn}>
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-black mb-4 sm:mb-6 tracking-tighter leading-[0.9] break-words px-2">
             ON-CHAIN PAYMENT <br className="hidden sm:block" />
@@ -269,7 +250,6 @@ const Home = () => {
               icon={<Github size={20} />} 
               label="GitHub" 
             />
-            {/* SUPPORT MODAL TRIGGER */}
             <button 
               onClick={() => setIsSupportOpen(true)}
               className="p-3 rounded-full bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 transition-all duration-300 opacity-60 hover:opacity-100 hover:text-salvaGold flex items-center justify-center"
@@ -317,13 +297,21 @@ const Home = () => {
               <form onSubmit={handleSupportSubmit} className="space-y-4">
                 <div className="space-y-4">
                   <input required name="name" placeholder="Full Name" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 transition-colors" />
-                  <input name="account" placeholder="Salva Account Number (Optional)" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 transition-colors" />
-                  <select name="topic" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 appearance-none transition-colors">
-                    <option value="General">General Inquiry</option>
-                    <option value="Transaction">Transaction Issue</option>
-                    <option value="Smart Account">Smart Wallet Access</option>
-                    <option value="Feedback">Feedback / Suggestions</option>
-                  </select>
+                  <input required name="account" placeholder="Salva Account Number" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 transition-colors" />
+                  
+                  {/* Select Dropdown with Icon */}
+                  <div className="relative group">
+                    <select name="topic" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 appearance-none transition-colors cursor-pointer">
+                      <option value="General">General Inquiry</option>
+                      <option value="Transaction">Transaction Issue</option>
+                      <option value="Smart Account">Smart Wallet Access</option>
+                      <option value="Feedback">Feedback / Suggestions</option>
+                    </select>
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 group-focus-within:opacity-100 transition-opacity">
+                      <ChevronDown size={20} />
+                    </div>
+                  </div>
+
                   <textarea required name="message" rows="4" placeholder="How can we help you today?" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 resize-none transition-colors"></textarea>
                 </div>
                 
@@ -340,7 +328,6 @@ const Home = () => {
   );
 };
 
-// Helper component for Social Links
 const SocialIcon = ({ href, icon, label }) => (
   <motion.a
     href={href}
