@@ -31,6 +31,8 @@ const {
   sendWelcomeEmail,
   sendTransactionEmailToSender,
   sendTransactionEmailToReceiver,
+  sendApprovalEmailToApprover,
+  sendApprovalEmailToSpender,
   sendSecurityChangeEmail,
   sendEmailChangeConfirmation,
 } = require("./services/emailService");
@@ -1153,7 +1155,7 @@ app.post("/api/approve", async (req, res) => {
 
       await applyCooldown(safeAddress, 20);
 
-      // ✅ SEND EMAILS (Only on Success)
+      // ✅ SEND APPROVAL EMAILS (Only on Success)
       console.log(`🔍 Looking for approver: ${normalizeAddress(safeAddress)}`);
       console.log(
         `🔍 Looking for spender: ${normalizeAddress(finalSpenderAddress)}`,
@@ -1179,12 +1181,11 @@ app.post("/api/approve", async (req, res) => {
 
       if (approverUser && approverUser.email) {
         try {
-          await sendTransactionEmailToSender(
+          await sendApprovalEmailToApprover(
             approverUser.email,
             approverUser.username,
             spenderInput,
             amount,
-            "successful",
           );
           console.log(`✅ Approver email sent to: ${approverUser.email}`);
         } catch (emailError) {
@@ -1192,10 +1193,10 @@ app.post("/api/approve", async (req, res) => {
         }
       }
 
-      // Notify spender (only if approval > 0)
-      if (spenderUser && spenderUser.email && numAmount > 0) {
+      // Notify spender (always send, even for revoke)
+      if (spenderUser && spenderUser.email) {
         try {
-          await sendTransactionEmailToReceiver(
+          await sendApprovalEmailToSpender(
             spenderUser.email,
             spenderUser.username,
             approverUser?.username || safeAddress,
