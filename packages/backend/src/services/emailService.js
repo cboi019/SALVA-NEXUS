@@ -11,93 +11,96 @@ const formatAmount = (amount) => {
 };
 
 // ===============================================
-// WELCOME EMAIL - NEW USER REGISTRATION
+// WELCOME EMAIL - SPAM-PROOF VERSION
 // ===============================================
 async function sendWelcomeEmail(userEmail, userName) {
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; background-color: #0A0A0B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <div style="max-width: 600px; margin: 40px auto; background: #1A1A1B; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 32px rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.2);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 48px 40px; text-align: center;">
-          <h1 style="margin: 0; color: #0A0A0B; font-size: 42px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SALVA</h1>
-          <p style="margin: 8px 0 0 0; color: rgba(10, 10, 11, 0.8); font-size: 12px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Digital Finance Platform</p>
-        </div>
-        
-        <!-- Welcome Badge -->
-        <div style="padding: 40px 40px 32px 40px;">
-          <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 18px 28px; border-radius: 16px; text-align: center; font-weight: 900; font-size: 16px; letter-spacing: 2px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.3);">
-            WELCOME TO SALVA 👋
-          </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div style="padding: 0 40px 40px 40px;">
-          <p style="color: #FFFFFF; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">Hi ${userName},</p>
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 24px 0; line-height: 1.7;">
-            Your account has been successfully created, and your wallet is now ready to use.
-          </p>
-          
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 32px 0; line-height: 1.7;">
-            SALVA is built to make crypto feel familiar — with simple account aliases, strong security, and transactions designed for everyday use.
-          </p>
-          
-          <!-- Features Box -->
-          <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 16px; padding: 28px; margin-bottom: 28px;">
-            <p style="color: #D4AF37; font-size: 15px; margin: 0 0 18px 0; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;">Here's what you can do next:</p>
-            <ul style="margin: 0; padding-left: 20px; color: rgba(255, 255, 255, 0.8); font-size: 14px; line-height: 2.2;">
-              <li><strong style="color: #D4AF37;">Receive NGNs</strong> and make transfers with ease</li>
-              <li>Explore a wallet designed for <strong style="color: #D4AF37;">real-world payments</strong></li>
-            </ul>
-          </div>
-          
-          <!-- Security Reminder Box -->
-          <div style="background: rgba(212, 175, 55, 0.1); border-left: 4px solid #D4AF37; padding: 20px 24px; border-radius: 12px; margin-bottom: 28px;">
-            <p style="color: #D4AF37; font-size: 14px; margin: 0 0 10px 0; font-weight: 800;">🔐 Security reminder</p>
-            <p style="color: rgba(255, 255, 255, 0.75); font-size: 13px; margin: 0; line-height: 1.7;">
-              SALVA will never ask for your password, PIN, or private keys. If you ever notice suspicious activity, contact support immediately.
+    <body style="margin: 0; padding: 20px; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <tr>
+          <td style="padding: 40px; text-align: center; background-color: #D4AF37;">
+            <h1 style="margin: 0; color: #000000; font-size: 32px;">SALVA</h1>
+            <p style="margin: 5px 0 0 0; color: #000000; font-size: 12px;">On-chain Financial Protocol</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px;">
+            <h2 style="color: #D4AF37; margin: 0 0 20px 0;">Welcome to SALVA</h2>
+            <p style="color: #333333; line-height: 1.6; margin: 0 0 15px 0;">Hi ${userName},</p>
+            <p style="color: #666666; line-height: 1.6; margin: 0 0 15px 0;">
+              Your account has been successfully created, and your wallet is now ready to use.
             </p>
-          </div>
-          
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0; line-height: 1.7; text-align: center;">
-            We're excited to have you on board.<br>
-            <strong style="color: #D4AF37; font-size: 16px;">Welcome to the future of everyday crypto.</strong>
-          </p>
-          
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 14px; margin: 28px 0 0 0; text-align: center; font-style: italic;">
-            — The SALVA Team
-          </p>
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">
-            Need help? Contact our support team
-          </p>
-          <div style="text-align: center;">
-            <a href="mailto:salva.notify@gmail.com" 
-               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
-              Contact Support
-            </a>
-          </div>
-        </div>
-      </div>
+            <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0;">
+              SALVA makes crypto simple with account aliases, strong security, and everyday transactions.
+            </p>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #f9f9f9; border: 1px solid #e0e0e0; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #D4AF37; font-weight: bold; margin: 0 0 10px 0;">What you can do:</p>
+                  <p style="color: #666666; margin: 5px 0;">• Receive NGNs and make transfers</p>
+                  <p style="color: #666666; margin: 5px 0;">• Explore real-world crypto payments</p>
+                </td>
+              </tr>
+            </table>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fff8e1; border-left: 4px solid #D4AF37; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #D4AF37; font-weight: bold; margin: 0 0 10px 0;">Security Reminder</p>
+                  <p style="color: #666666; margin: 0; line-height: 1.6;">
+                    SALVA will never ask for your password, PIN, or private keys. Contact support if you notice suspicious activity.
+                  </p>
+                </td>
+              </tr>
+            </table>
+            
+            <p style="color: #666666; text-align: center; margin: 30px 0 10px 0;">
+              Welcome to the future of everyday crypto.
+            </p>
+            <p style="color: #999999; text-align: center; margin: 0; font-style: italic;">
+              — The SALVA Team
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #f5f5f5; text-align: center;">
+            <p style="color: #999999; margin: 0 0 15px 0;">Need help?</p>
+            <a href="mailto:salva.notify@gmail.com" style="display: inline-block; background-color: #D4AF37; color: #000000; padding: 12px 30px; text-decoration: none; font-weight: bold;">Contact Support</a>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
 
+  const text = `Hi ${userName},
+
+Your SALVA account has been successfully created and your wallet is ready to use.
+
+What you can do:
+- Receive NGNs and make transfers
+- Explore real-world crypto payments
+
+Security Reminder: SALVA will never ask for your password, PIN, or private keys.
+
+Need help? Email us at salva.notify@gmail.com
+
+— The SALVA Team`;
+
   try {
     await resend.emails.send({
-      from: 'Salva <no-reply@salva-nexus.org>',
+      from: 'SALVA Support <no-reply@salva-nexus.org>',
       to: userEmail,
-      subject: 'Welcome to SALVA — your account is ready',
-      html: html
+      subject: 'Welcome to SALVA - Your Account is Ready',
+      html: html,
+      text: text
     });
     console.log(`📧 Welcome email sent to: ${userEmail}`);
   } catch (error) {
@@ -106,96 +109,112 @@ async function sendWelcomeEmail(userEmail, userName) {
 }
 
 // ===============================================
-// TRANSACTION EMAIL - SENDER
+// TRANSACTION EMAIL - SENDER (SPAM-PROOF)
 // ===============================================
 async function sendTransactionEmailToSender(senderEmail, senderName, recipientIdentifier, amount, status) {
   const subject = status === 'successful' 
-    ? '✅ Payment Sent Successfully - SALVA'
-    : '❌ Payment Failed - SALVA';
+    ? 'Payment Sent Successfully - SALVA'
+    : 'Payment Failed - SALVA';
   
-  const statusColor = status === 'successful' 
-    ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)' 
-    : 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)';
+  const statusColor = status === 'successful' ? '#10B981' : '#EF4444';
   const statusText = status === 'successful' ? 'PAYMENT SENT' : 'PAYMENT FAILED';
-  const statusIcon = status === 'successful' ? '✓' : '✕';
   
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; background-color: #0A0A0B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <div style="max-width: 600px; margin: 40px auto; background: #1A1A1B; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 32px rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.2);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 48px 40px; text-align: center;">
-          <h1 style="margin: 0; color: #0A0A0B; font-size: 42px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SALVA</h1>
-          <p style="margin: 8px 0 0 0; color: rgba(10, 10, 11, 0.8); font-size: 12px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Digital Finance Platform</p>
-        </div>
-        
-        <!-- Status Badge -->
-        <div style="padding: 40px 40px 32px 40px;">
-          <div style="background: ${statusColor}; color: white; padding: 18px 28px; border-radius: 16px; text-align: center; font-weight: 900; font-size: 16px; letter-spacing: 2px; box-shadow: 0 4px 16px ${status === 'successful' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'};">
-            ${statusIcon} ${statusText}
-          </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div style="padding: 0 40px 40px 40px;">
-          <p style="color: #FFFFFF; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">Hello ${senderName},</p>
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 32px 0; line-height: 1.7;">
-            ${status === 'successful' 
-              ? 'Your payment has been successfully processed and sent to the recipient.' 
-              : 'We were unable to process your payment at this time. Please try again or contact support if the issue persists.'}
-          </p>
-          
-          <!-- Transaction Details Box -->
-          <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 16px; padding: 28px; margin-bottom: 28px;">
-            <div style="margin-bottom: 24px;">
-              <p style="color: rgba(212, 175, 55, 0.7); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px 0; font-weight: 800;">Amount</p>
-              <p style="color: #FFFFFF; font-size: 38px; font-weight: 900; margin: 0; letter-spacing: -2px;">${formatAmount(amount)} <span style="color: #D4AF37; font-size: 18px; font-weight: 700;">NGNs</span></p>
-            </div>
+    <body style="margin: 0; padding: 20px; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <tr>
+          <td style="padding: 40px; text-align: center; background-color: #D4AF37;">
+            <h1 style="margin: 0; color: #000000; font-size: 32px;">SALVA</h1>
+            <p style="margin: 5px 0 0 0; color: #000000; font-size: 12px;">On-chain Financial Protocol</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; text-align: center; background-color: ${statusColor};">
+            <p style="margin: 0; color: #ffffff; font-size: 18px; font-weight: bold;">${statusText}</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px;">
+            <p style="color: #333333; font-weight: bold; margin: 0 0 10px 0;">Hello ${senderName},</p>
+            <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0;">
+              ${status === 'successful' 
+                ? 'Your payment has been successfully processed and sent to the recipient.' 
+                : 'We were unable to process your payment. Please try again or contact support.'}
+            </p>
             
-            <div style="border-top: 1px solid rgba(212, 175, 55, 0.2); padding-top: 20px;">
-              <p style="color: rgba(212, 175, 55, 0.7); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px 0; font-weight: 800;">Recipient</p>
-              <p style="color: rgba(255, 255, 255, 0.9); font-size: 15px; font-weight: 600; margin: 0; font-family: 'Courier New', monospace; word-break: break-all;">${recipientIdentifier}</p>
-            </div>
-          </div>
-          
-          ${status === 'successful' ? `
-          <div style="background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10B981; padding: 18px 24px; border-radius: 12px; margin-bottom: 28px;">
-            <p style="color: #10B981; font-size: 14px; margin: 0; font-weight: 700;">✓ Transaction verified on Base Sepolia blockchain</p>
-          </div>
-          ` : `
-          <div style="background: rgba(239, 68, 68, 0.15); border-left: 4px solid #EF4444; padding: 18px 24px; border-radius: 12px; margin-bottom: 28px;">
-            <p style="color: #EF4444; font-size: 14px; margin: 0; font-weight: 700;">! Please ensure you have sufficient balance and try again</p>
-          </div>
-          `}
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">Need help? Contact our support team</p>
-          <div style="text-align: center;">
-            <a href="mailto:salva.notify@gmail.com" 
-               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
-              Contact Support
-            </a>
-          </div>
-        </div>
-      </div>
+            <table width="100%" cellpadding="20" cellspacing="0" style="background-color: #f9f9f9; border: 1px solid #e0e0e0; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #999999; font-size: 11px; margin: 0 0 5px 0;">AMOUNT</p>
+                  <p style="color: #000000; font-size: 28px; font-weight: bold; margin: 0;">${formatAmount(amount)} NGNs</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="border-top: 1px solid #e0e0e0; padding-top: 15px;">
+                  <p style="color: #999999; font-size: 11px; margin: 0 0 5px 0;">RECIPIENT</p>
+                  <p style="color: #333333; margin: 0; word-break: break-all;">${recipientIdentifier}</p>
+                </td>
+              </tr>
+            </table>
+            
+            ${status === 'successful' ? `
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #e6f7f1; border-left: 4px solid #10B981; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #10B981; margin: 0;">Transaction verified on Base Sepolia blockchain</p>
+                </td>
+              </tr>
+            </table>
+            ` : `
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fee; border-left: 4px solid #EF4444; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #EF4444; margin: 0;">Please ensure you have sufficient balance and try again</p>
+                </td>
+              </tr>
+            </table>
+            `}
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #f5f5f5; text-align: center;">
+            <p style="color: #999999; margin: 0 0 15px 0;">Need help?</p>
+            <a href="mailto:salva.notify@gmail.com" style="display: inline-block; background-color: #D4AF37; color: #000000; padding: 12px 30px; text-decoration: none; font-weight: bold;">Contact Support</a>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
 
+  const text = `Hello ${senderName},
+
+${status === 'successful' 
+  ? 'Your payment has been successfully processed.' 
+  : 'We were unable to process your payment.'}
+
+Amount: ${formatAmount(amount)} NGNs
+Recipient: ${recipientIdentifier}
+
+${status === 'successful' ? 'Transaction verified on Base Sepolia blockchain.' : 'Please ensure you have sufficient balance and try again.'}
+
+Need help? Email us at salva.notify@gmail.com
+
+— The SALVA Team`;
+
   try {
     await resend.emails.send({
-      from: 'Salva <no-reply@salva-nexus.org>',
+      from: 'SALVA Support <no-reply@salva-nexus.org>',
       to: senderEmail,
       subject: subject,
-      html: html
+      html: html,
+      text: text
     });
     console.log(`📧 Sender email sent to: ${senderEmail}`);
   } catch (error) {
@@ -204,78 +223,91 @@ async function sendTransactionEmailToSender(senderEmail, senderName, recipientId
 }
 
 // ===============================================
-// TRANSACTION EMAIL - RECEIVER
+// TRANSACTION EMAIL - RECEIVER (SPAM-PROOF)
 // ===============================================
 async function sendTransactionEmailToReceiver(receiverEmail, receiverName, senderIdentifier, amount) {
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; background-color: #0A0A0B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <div style="max-width: 600px; margin: 40px auto; background: #1A1A1B; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 32px rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.2);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 48px 40px; text-align: center;">
-          <h1 style="margin: 0; color: #0A0A0B; font-size: 42px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SALVA</h1>
-          <p style="margin: 8px 0 0 0; color: rgba(10, 10, 11, 0.8); font-size: 12px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Digital Finance Platform</p>
-        </div>
-        
-        <!-- Status Badge -->
-        <div style="padding: 40px 40px 32px 40px;">
-          <div style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 18px 28px; border-radius: 16px; text-align: center; font-weight: 900; font-size: 16px; letter-spacing: 2px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);">
-            💰 PAYMENT RECEIVED
-          </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div style="padding: 0 40px 40px 40px;">
-          <p style="color: #FFFFFF; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">Hello ${receiverName},</p>
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 32px 0; line-height: 1.7;">
-            You have received a payment. The funds are now available in your SALVA wallet.
-          </p>
-          
-          <!-- Transaction Details Box -->
-          <div style="background: rgba(212, 175, 55, 0.08); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 16px; padding: 28px; margin-bottom: 28px;">
-            <div style="margin-bottom: 24px;">
-              <p style="color: rgba(212, 175, 55, 0.7); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px 0; font-weight: 800;">Amount Received</p>
-              <p style="color: #10B981; font-size: 38px; font-weight: 900; margin: 0; letter-spacing: -2px;">+${formatAmount(amount)} <span style="color: #D4AF37; font-size: 18px; font-weight: 700;">NGNs</span></p>
-            </div>
+    <body style="margin: 0; padding: 20px; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <tr>
+          <td style="padding: 40px; text-align: center; background-color: #D4AF37;">
+            <h1 style="margin: 0; color: #000000; font-size: 32px;">SALVA</h1>
+            <p style="margin: 5px 0 0 0; color: #000000; font-size: 12px;">On-chain Financial Protocol</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; text-align: center; background-color: #10B981;">
+            <p style="margin: 0; color: #ffffff; font-size: 18px; font-weight: bold;">PAYMENT RECEIVED</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px;">
+            <p style="color: #333333; font-weight: bold; margin: 0 0 10px 0;">Hello ${receiverName},</p>
+            <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0;">
+              You have received a payment. The funds are now available in your SALVA wallet.
+            </p>
             
-            <div style="border-top: 1px solid rgba(212, 175, 55, 0.2); padding-top: 20px;">
-              <p style="color: rgba(212, 175, 55, 0.7); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; margin: 0 0 10px 0; font-weight: 800;">From</p>
-              <p style="color: rgba(255, 255, 255, 0.9); font-size: 15px; font-weight: 600; margin: 0; font-family: 'Courier New', monospace; word-break: break-all;">${senderIdentifier}</p>
-            </div>
-          </div>
-          
-          <div style="background: rgba(16, 185, 129, 0.15); border-left: 4px solid #10B981; padding: 18px 24px; border-radius: 12px; margin-bottom: 28px;">
-            <p style="color: #10B981; font-size: 14px; margin: 0; font-weight: 700;">✓ Transaction verified on Base Sepolia blockchain</p>
-          </div>
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">Need help? Contact our support team</p>
-          <div style="text-align: center;">
-            <a href="mailto:salva.notify@gmail.com" 
-               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
-              Contact Support
-            </a>
-          </div>
-        </div>
-      </div>
+            <table width="100%" cellpadding="20" cellspacing="0" style="background-color: #f9f9f9; border: 1px solid #e0e0e0; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #999999; font-size: 11px; margin: 0 0 5px 0;">AMOUNT RECEIVED</p>
+                  <p style="color: #10B981; font-size: 28px; font-weight: bold; margin: 0;">+${formatAmount(amount)} NGNs</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="border-top: 1px solid #e0e0e0; padding-top: 15px;">
+                  <p style="color: #999999; font-size: 11px; margin: 0 0 5px 0;">FROM</p>
+                  <p style="color: #333333; margin: 0; word-break: break-all;">${senderIdentifier}</p>
+                </td>
+              </tr>
+            </table>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #e6f7f1; border-left: 4px solid #10B981; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #10B981; margin: 0;">Transaction verified on Base Sepolia blockchain</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #f5f5f5; text-align: center;">
+            <p style="color: #999999; margin: 0 0 15px 0;">Need help?</p>
+            <a href="mailto:salva.notify@gmail.com" style="display: inline-block; background-color: #D4AF37; color: #000000; padding: 12px 30px; text-decoration: none; font-weight: bold;">Contact Support</a>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
 
+  const text = `Hello ${receiverName},
+
+You have received a payment. The funds are now available in your SALVA wallet.
+
+Amount Received: +${formatAmount(amount)} NGNs
+From: ${senderIdentifier}
+
+Transaction verified on Base Sepolia blockchain.
+
+Need help? Email us at salva.notify@gmail.com
+
+— The SALVA Team`;
+
   try {
     await resend.emails.send({
-      from: 'Salva <no-reply@salva-nexus.org>',
+      from: 'SALVA Support <no-reply@salva-nexus.org>',
       to: receiverEmail,
-      subject: '💰 Payment Received - SALVA',
-      html: html
+      subject: 'Payment Received - SALVA',
+      html: html,
+      text: text
     });
     console.log(`📧 Receiver email sent to: ${receiverEmail}`);
   } catch (error) {
@@ -284,7 +316,7 @@ async function sendTransactionEmailToReceiver(receiverEmail, receiverName, sende
 }
 
 // ===============================================
-// SECURITY CHANGE EMAIL - FOR OLD EMAIL (WARNING)
+// SECURITY CHANGE EMAIL (SPAM-PROOF)
 // ===============================================
 async function sendSecurityChangeEmail(userEmail, userName, changeType, accountNumber) {
   const changeTypeText = {
@@ -297,79 +329,91 @@ async function sendSecurityChangeEmail(userEmail, userName, changeType, accountN
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; background-color: #0A0A0B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <div style="max-width: 600px; margin: 40px auto; background: #1A1A1B; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 32px rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.2);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 48px 40px; text-align: center;">
-          <h1 style="margin: 0; color: #0A0A0B; font-size: 42px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SALVA</h1>
-          <p style="margin: 8px 0 0 0; color: rgba(10, 10, 11, 0.8); font-size: 12px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Security Alert</p>
-        </div>
-        
-        <!-- Alert Badge -->
-        <div style="padding: 40px 40px 32px 40px;">
-          <div style="background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); color: white; padding: 18px 28px; border-radius: 16px; text-align: center; font-weight: 900; font-size: 16px; letter-spacing: 2px; box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);">
-            ⚠️ ACCOUNT SECURITY CHANGE
-          </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div style="padding: 0 40px 40px 40px;">
-          <p style="color: #FFFFFF; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">Hello ${userName},</p>
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 28px 0; line-height: 1.7;">
-            Your <strong style="color: #D4AF37;">${changeTypeText[changeType]}</strong> has been successfully changed.
-          </p>
-          
-          <!-- Security Info Box -->
-          <div style="background: rgba(245, 158, 11, 0.15); border: 2px solid rgba(245, 158, 11, 0.4); border-radius: 16px; padding: 28px; margin-bottom: 28px;">
-            <p style="color: #F59E0B; font-size: 15px; margin: 0 0 14px 0; font-weight: 800;">🔒 Account Restricted for 24 Hours</p>
-            <p style="color: rgba(255, 255, 255, 0.75); font-size: 14px; margin: 0; line-height: 1.7;">
-              As a security measure, your account has been temporarily restricted for 24 hours. You will not be able to perform transactions during this period.
+    <body style="margin: 0; padding: 20px; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <tr>
+          <td style="padding: 40px; text-align: center; background-color: #D4AF37;">
+            <h1 style="margin: 0; color: #000000; font-size: 32px;">SALVA</h1>
+            <p style="margin: 5px 0 0 0; color: #000000; font-size: 12px;">Security Alert</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; text-align: center; background-color: #F59E0B;">
+            <p style="margin: 0; color: #ffffff; font-size: 18px; font-weight: bold;">ACCOUNT SECURITY CHANGE</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px;">
+            <p style="color: #333333; font-weight: bold; margin: 0 0 10px 0;">Hello ${userName},</p>
+            <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0;">
+              Your ${changeTypeText[changeType]} has been successfully changed.
             </p>
-          </div>
-          
-          <!-- Warning Box -->
-          <div style="background: rgba(239, 68, 68, 0.15); border-left: 4px solid #EF4444; padding: 24px; border-radius: 12px; margin-bottom: 28px;">
-            <p style="color: #EF4444; font-size: 15px; margin: 0 0 14px 0; font-weight: 800;">❗ Didn't make this change?</p>
-            <p style="color: rgba(255, 255, 255, 0.75); font-size: 14px; margin: 0 0 18px 0; line-height: 1.7;">
-              If you did not authorize this change, your account may have been compromised. Please contact our support team immediately.
-            </p>
-            <p style="color: rgba(255, 255, 255, 0.8); font-size: 13px; margin: 0 0 6px 0;">
-              <strong style="color: #D4AF37;">Your Account Number:</strong>
-            </p>
-            <p style="font-family: 'Courier New', monospace; background: rgba(212, 175, 55, 0.1); color: #D4AF37; padding: 12px 16px; border-radius: 8px; font-size: 15px; font-weight: 700; margin: 0 0 8px 0; border: 1px solid rgba(212, 175, 55, 0.3);">${accountNumber}</p>
-            <p style="color: rgba(255, 255, 255, 0.5); font-size: 12px; margin: 0; font-style: italic;">
-              (Include this in your support message)
-            </p>
-          </div>
-          
-          <!-- Contact Support Button -->
-          <div style="text-align: center; margin: 36px 0 0 0;">
-            <a href="mailto:salva.notify@gmail.com?subject=Unauthorized%20Account%20Change%20-%20${accountNumber}&body=Account%20Number:%20${accountNumber}%0A%0AI%20did%20not%20authorize%20the%20recent%20${changeTypeText[changeType]}%20change%20on%20my%20account.%20Please%20help%20me%20secure%20my%20account%20immediately." 
-               style="display: inline-block; background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); color: white; padding: 16px 40px; border-radius: 12px; text-decoration: none; font-weight: 900; font-size: 15px; letter-spacing: 1.5px; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);">
-              CONTACT SUPPORT
-            </a>
-          </div>
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0; text-align: center;">SALVA Security Team</p>
-        </div>
-      </div>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fff8e1; border: 2px solid #F59E0B; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #F59E0B; font-weight: bold; margin: 0 0 10px 0;">Account Restricted for 24 Hours</p>
+                  <p style="color: #666666; margin: 0;">
+                    As a security measure, your account has been temporarily restricted. You will not be able to perform transactions during this period.
+                  </p>
+                </td>
+              </tr>
+            </table>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fee; border-left: 4px solid #EF4444; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #EF4444; font-weight: bold; margin: 0 0 10px 0;">Didn't make this change?</p>
+                  <p style="color: #666666; margin: 0 0 15px 0;">
+                    If you did not authorize this change, contact our support team immediately.
+                  </p>
+                  <p style="color: #666666; margin: 0 0 5px 0;"><strong>Your Account Number:</strong></p>
+                  <p style="background-color: #fff8e1; color: #D4AF37; padding: 10px; margin: 0; font-weight: bold; border: 1px solid #D4AF37;">${accountNumber}</p>
+                </td>
+              </tr>
+            </table>
+            
+            <div style="text-align: center; margin-top: 30px;">
+              <a href="mailto:salva.notify@gmail.com?subject=Unauthorized%20Account%20Change%20-%20${accountNumber}" style="display: inline-block; background-color: #EF4444; color: #ffffff; padding: 12px 30px; text-decoration: none; font-weight: bold;">CONTACT SUPPORT</a>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #f5f5f5; text-align: center;">
+            <p style="color: #999999; margin: 0;">SALVA Security Team</p>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
 
+  const text = `Hello ${userName},
+
+Your ${changeTypeText[changeType]} has been successfully changed.
+
+ACCOUNT RESTRICTED FOR 24 HOURS
+As a security measure, your account has been temporarily restricted.
+
+DIDN'T MAKE THIS CHANGE?
+If you did not authorize this change, contact support immediately.
+
+Your Account Number: ${accountNumber}
+
+Contact us at: salva.notify@gmail.com
+
+— SALVA Security Team`;
+
   try {
     await resend.emails.send({
-      from: 'Salva Security <no-reply@salva-nexus.org>',
+      from: 'SALVA Security <no-reply@salva-nexus.org>',
       to: userEmail,
-      subject: `🔒 Security Alert: ${changeTypeText[changeType]} Changed - SALVA`,
-      html: html
+      subject: `Security Alert: ${changeTypeText[changeType]} Changed - SALVA`,
+      html: html,
+      text: text
     });
     console.log(`📧 Security alert sent to: ${userEmail}`);
   } catch (error) {
@@ -378,89 +422,101 @@ async function sendSecurityChangeEmail(userEmail, userName, changeType, accountN
 }
 
 // ===============================================
-// EMAIL CHANGE CONFIRMATION - FOR NEW EMAIL (NO WARNING)
+// EMAIL CHANGE CONFIRMATION (SPAM-PROOF)
 // ===============================================
 async function sendEmailChangeConfirmation(newEmail, userName, accountNumber) {
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="color-scheme" content="light dark">
-      <meta name="supported-color-schemes" content="light dark">
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
     </head>
-    <body style="margin: 0; padding: 0; background-color: #0A0A0B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
-      <div style="max-width: 600px; margin: 40px auto; background: #1A1A1B; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 32px rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.2);">
-        
-        <!-- Header -->
-        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 48px 40px; text-align: center;">
-          <h1 style="margin: 0; color: #0A0A0B; font-size: 42px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SALVA</h1>
-          <p style="margin: 8px 0 0 0; color: rgba(10, 10, 11, 0.8); font-size: 12px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Digital Finance Platform</p>
-        </div>
-        
-        <!-- Success Badge -->
-        <div style="padding: 40px 40px 32px 40px;">
-          <div style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 18px 28px; border-radius: 16px; text-align: center; font-weight: 900; font-size: 16px; letter-spacing: 2px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);">
-            ✓ EMAIL UPDATED SUCCESSFULLY
-          </div>
-        </div>
-        
-        <!-- Main Content -->
-        <div style="padding: 0 40px 40px 40px;">
-          <p style="color: #FFFFFF; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">Hello ${userName},</p>
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 28px 0; line-height: 1.7;">
-            Your email address has been successfully updated. This is now your primary email for all SALVA communications and notifications.
-          </p>
-          
-          <!-- Info Box -->
-          <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 16px; padding: 28px; margin-bottom: 28px;">
-            <p style="color: #10B981; font-size: 15px; margin: 0 0 14px 0; font-weight: 800;">✓ Your new email is now active</p>
-            <p style="color: rgba(255, 255, 255, 0.75); font-size: 14px; margin: 0 0 20px 0; line-height: 1.7;">
-              You'll receive all future account notifications, transaction alerts, and security updates at this email address.
+    <body style="margin: 0; padding: 20px; background-color: #f5f5f5; font-family: Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <tr>
+          <td style="padding: 40px; text-align: center; background-color: #D4AF37;">
+            <h1 style="margin: 0; color: #000000; font-size: 32px;">SALVA</h1>
+            <p style="margin: 5px 0 0 0; color: #000000; font-size: 12px;">On-chain Financial Protocol</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; text-align: center; background-color: #10B981;">
+            <p style="margin: 0; color: #ffffff; font-size: 18px; font-weight: bold;">EMAIL UPDATED SUCCESSFULLY</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 40px;">
+            <p style="color: #333333; font-weight: bold; margin: 0 0 10px 0;">Hello ${userName},</p>
+            <p style="color: #666666; line-height: 1.6; margin: 0 0 20px 0;">
+              Your email address has been successfully updated. This is now your primary email for all SALVA communications.
             </p>
-            <p style="color: rgba(255, 255, 255, 0.8); font-size: 13px; margin: 0 0 6px 0;">
-              <strong style="color: #D4AF37;">Your Account Number:</strong>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #e6f7f1; border: 1px solid #10B981; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #10B981; font-weight: bold; margin: 0 0 10px 0;">Your new email is now active</p>
+                  <p style="color: #666666; margin: 0 0 15px 0;">
+                    You'll receive all future notifications and alerts at this email address.
+                  </p>
+                  <p style="color: #666666; margin: 0 0 5px 0;"><strong>Your Account Number:</strong></p>
+                  <p style="background-color: #fff8e1; color: #D4AF37; padding: 10px; margin: 0; font-weight: bold; border: 1px solid #D4AF37;">${accountNumber}</p>
+                </td>
+              </tr>
+            </table>
+            
+            <table width="100%" cellpadding="15" cellspacing="0" style="background-color: #fff8e1; border-left: 4px solid #F59E0B; margin: 20px 0;">
+              <tr>
+                <td>
+                  <p style="color: #F59E0B; font-weight: bold; margin: 0 0 10px 0;">24-Hour Security Lock Active</p>
+                  <p style="color: #666666; margin: 0;">
+                    As a security measure, your account has been temporarily restricted for 24 hours.
+                  </p>
+                </td>
+              </tr>
+            </table>
+            
+            <p style="color: #666666; text-align: center; margin: 20px 0;">
+              Thank you for keeping your account information up to date.
             </p>
-            <p style="font-family: 'Courier New', monospace; background: rgba(212, 175, 55, 0.1); color: #D4AF37; padding: 12px 16px; border-radius: 8px; font-size: 15px; font-weight: 700; margin: 0; border: 1px solid rgba(212, 175, 55, 0.3);">${accountNumber}</p>
-          </div>
-          
-          <!-- Security Notice Box -->
-          <div style="background: rgba(245, 158, 11, 0.15); border-left: 4px solid #F59E0B; padding: 20px 24px; border-radius: 12px; margin-bottom: 28px;">
-            <p style="color: #F59E0B; font-size: 14px; margin: 0 0 10px 0; font-weight: 800;">🔒 24-Hour Security Lock Active</p>
-            <p style="color: rgba(255, 255, 255, 0.75); font-size: 13px; margin: 0; line-height: 1.7;">
-              As a security measure, your account has been temporarily restricted for 24 hours. You will not be able to perform transactions during this period.
+            <p style="color: #999999; text-align: center; margin: 0; font-style: italic;">
+              — The SALVA Team
             </p>
-          </div>
-          
-          <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin: 0; line-height: 1.7; text-align: center;">
-            Thank you for keeping your account information up to date.
-          </p>
-          
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 14px; margin: 28px 0 0 0; text-align: center; font-style: italic;">
-            — The SALVA Team
-          </p>
-        </div>
-        
-        <!-- Footer -->
-        <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">Need help? Contact our support team</p>
-          <div style="text-align: center;">
-            <a href="mailto:salva.notify@gmail.com" 
-               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
-              Contact Support
-            </a>
-          </div>
-        </div>
-      </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding: 30px; background-color: #f5f5f5; text-align: center;">
+            <p style="color: #999999; margin: 0 0 15px 0;">Need help?</p>
+            <a href="mailto:salva.notify@gmail.com" style="display: inline-block; background-color: #D4AF37; color: #000000; padding: 12px 30px; text-decoration: none; font-weight: bold;">Contact Support</a>
+          </td>
+        </tr>
+      </table>
     </body>
     </html>
   `;
 
+  const text = `Hello ${userName},
+
+Your email address has been successfully updated. This is now your primary email for all SALVA communications.
+
+Your Account Number: ${accountNumber}
+
+24-HOUR SECURITY LOCK ACTIVE
+As a security measure, your account has been temporarily restricted for 24 hours.
+
+Thank you for keeping your account information up to date.
+
+Need help? Email us at salva.notify@gmail.com
+
+— The SALVA Team`;
+
   try {
     await resend.emails.send({
-      from: 'Salva <no-reply@salva-nexus.org>',
+      from: 'SALVA Support <no-reply@salva-nexus.org>',
       to: newEmail,
-      subject: '✓ Email Updated Successfully - SALVA',
-      html: html
+      subject: 'Email Updated Successfully - SALVA',
+      html: html,
+      text: text
     });
     console.log(`📧 Email change confirmation sent to: ${newEmail}`);
   } catch (error) {
