@@ -32,7 +32,7 @@ const {
   sendTransactionEmailToSender,
   sendTransactionEmailToReceiver,
   sendSecurityChangeEmail,
-  sendEmailChangeConfirmation 
+  sendEmailChangeConfirmation,
 } = require("./services/emailService");
 
 // ===============================================
@@ -959,15 +959,19 @@ app.post("/api/transfer", async (req, res) => {
         await applyCooldown(safeAddress, 20);
 
         // ✅ SEND EMAILS (Only on Success)
-        try {
-          const senderUser = await User.findOne({
-            safeAddress: safeAddress.toLowerCase(),
-          });
-          const receiverUser = await User.findOne({
-            safeAddress: recipientAddress.toLowerCase(),
-          });
+        const senderUser = await User.findOne({
+          safeAddress: safeAddress.toLowerCase(),
+        });
+        const receiverUser = await User.findOne({
+          safeAddress: recipientAddress.toLowerCase(),
+        });
 
-          if (senderUser && senderUser.email) {
+        console.log(
+          `📧 Preparing emails - Sender: ${senderUser?.email || "NOT FOUND"}, Receiver: ${receiverUser?.email || "NOT FOUND"}`,
+        );
+
+        if (senderUser && senderUser.email) {
+          try {
             await sendTransactionEmailToSender(
               senderUser.email,
               senderUser.username,
@@ -975,19 +979,24 @@ app.post("/api/transfer", async (req, res) => {
               amount,
               "successful",
             );
+            console.log(`✅ Sender email sent to: ${senderUser.email}`);
+          } catch (emailError) {
+            console.error("❌ Sender email FAILED:", emailError.message);
           }
+        }
 
-          if (receiverUser && receiverUser.email) {
+        if (receiverUser && receiverUser.email) {
+          try {
             await sendTransactionEmailToReceiver(
               receiverUser.email,
               receiverUser.username,
               senderDisplayIdentifier,
               amount,
             );
+            console.log(`✅ Receiver email sent to: ${receiverUser.email}`);
+          } catch (emailError) {
+            console.error("❌ Receiver email FAILED:", emailError.message);
           }
-        } catch (emailError) {
-          console.error("❌ Email notification error:", emailError.message);
-          // Don't fail the transaction if email fails
         }
       } else {
         queueEntry.status = "FAILED";
@@ -1087,12 +1096,10 @@ app.post("/api/approve", async (req, res) => {
         queueEntry.errorMessage = taskStatus.reason;
         queueEntry.updatedAt = new Date();
         await queueEntry.save();
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: taskStatus.reason || "Approval reverted",
-          });
+        return res.status(400).json({
+          success: false,
+          message: taskStatus.reason || "Approval reverted",
+        });
       }
 
       queueEntry.status = "CONFIRMED";
@@ -1126,16 +1133,20 @@ app.post("/api/approve", async (req, res) => {
 
       await applyCooldown(safeAddress, 20);
 
-      // ✅ SEND EMAIL (Only on Success)
-      try {
-        const approverUser = await User.findOne({
-          safeAddress: safeAddress.toLowerCase(),
-        });
-        const spenderUser = await User.findOne({
-          safeAddress: finalSpenderAddress.toLowerCase(),
-        });
+      // ✅ SEND EMAILS (Only on Success)
+      const approverUser = await User.findOne({
+        safeAddress: safeAddress.toLowerCase(),
+      });
+      const spenderUser = await User.findOne({
+        safeAddress: finalSpenderAddress.toLowerCase(),
+      });
 
-        if (approverUser && approverUser.email) {
+      console.log(
+        `📧 Preparing approval emails - Approver: ${approverUser?.email || "NOT FOUND"}, Spender: ${spenderUser?.email || "NOT FOUND"}`,
+      );
+
+      if (approverUser && approverUser.email) {
+        try {
           await sendTransactionEmailToSender(
             approverUser.email,
             approverUser.username,
@@ -1143,19 +1154,25 @@ app.post("/api/approve", async (req, res) => {
             amount,
             "successful",
           );
+          console.log(`✅ Approver email sent to: ${approverUser.email}`);
+        } catch (emailError) {
+          console.error("❌ Approver email FAILED:", emailError.message);
         }
+      }
 
-        // Optionally notify spender
-        if (spenderUser && spenderUser.email && numAmount > 0) {
+      // Notify spender (only if approval > 0)
+      if (spenderUser && spenderUser.email && numAmount > 0) {
+        try {
           await sendTransactionEmailToReceiver(
             spenderUser.email,
             spenderUser.username,
-            approverUser.username || safeAddress,
+            approverUser?.username || safeAddress,
             amount,
           );
+          console.log(`✅ Spender email sent to: ${spenderUser.email}`);
+        } catch (emailError) {
+          console.error("❌ Spender email FAILED:", emailError.message);
         }
-      } catch (emailError) {
-        console.error("❌ Email notification error:", emailError.message);
       }
 
       res.json({ success: true, taskId: result.taskId });
@@ -1334,18 +1351,19 @@ app.post("/api/transferFrom", async (req, res) => {
       await applyCooldown(safeAddress, 20);
 
       // ✅ SEND EMAILS (Only on Success)
-      try {
-        const fromUser = await User.findOne({
-          safeAddress: fromAddress.toLowerCase(),
-        });
-        const toUser = await User.findOne({
-          safeAddress: toAddress.toLowerCase(),
-        });
-        const executorUser = await User.findOne({
-          safeAddress: safeAddress.toLowerCase(),
-        });
+      const fromUser = await User.findOne({
+        safeAddress: fromAddress.toLowerCase(),
+      });
+      const toUser = await User.findOne({
+        safeAddress: toAddress.toLowerCase(),
+      });
 
-        if (fromUser && fromUser.email) {
+      console.log(
+        `📧 Preparing transferFrom emails - From: ${fromUser?.email || "NOT FOUND"}, To: ${toUser?.email || "NOT FOUND"}`,
+      );
+
+      if (fromUser && fromUser.email) {
+        try {
           await sendTransactionEmailToSender(
             fromUser.email,
             fromUser.username,
@@ -1353,18 +1371,24 @@ app.post("/api/transferFrom", async (req, res) => {
             amount,
             "successful",
           );
+          console.log(`✅ From-user email sent to: ${fromUser.email}`);
+        } catch (emailError) {
+          console.error("❌ From-user email FAILED:", emailError.message);
         }
+      }
 
-        if (toUser && toUser.email) {
+      if (toUser && toUser.email) {
+        try {
           await sendTransactionEmailToReceiver(
             toUser.email,
             toUser.username,
             fromInput,
             amount,
           );
+          console.log(`✅ To-user email sent to: ${toUser.email}`);
+        } catch (emailError) {
+          console.error("❌ To-user email FAILED:", emailError.message);
         }
-      } catch (emailError) {
-        console.error("❌ Email notification error:", emailError.message);
       }
 
       res.json({ success: true, taskId: result.taskId });
@@ -1589,7 +1613,6 @@ app.post("/api/user/reset-pin", authLimiter, async (req, res) => {
   }
 });
 
-
 app.post("/api/user/update-email", authLimiter, async (req, res) => {
   try {
     const { oldEmail, newEmail } = req.body;
@@ -1624,20 +1647,20 @@ app.post("/api/user/update-email", authLimiter, async (req, res) => {
       const accountNum =
         (await getAccountNumberFromAddress(user.safeAddress)) ||
         user.safeAddress;
-      
+
       // Send security alert to OLD email (with warning about unauthorized change)
       await sendSecurityChangeEmail(
-        sanitizedOldEmail,  // ✅ OLD EMAIL gets the warning
+        sanitizedOldEmail, // ✅ OLD EMAIL gets the warning
         user.username,
         "email",
-        accountNum
+        accountNum,
       );
-      
+
       // Send confirmation to NEW email (friendly, no panic)
       await sendEmailChangeConfirmation(
-        sanitizedNewEmail,  // ✅ NEW EMAIL gets the confirmation
+        sanitizedNewEmail, // ✅ NEW EMAIL gets the confirmation
         user.username,
-        accountNum
+        accountNum,
       );
     } catch (emailError) {
       console.error("❌ Email notification error:", emailError.message);
