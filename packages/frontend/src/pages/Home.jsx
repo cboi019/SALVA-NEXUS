@@ -1,43 +1,61 @@
 // Salva-Digital-Tech/packages/frontend/src/pages/Home.jsx
 import React, { useState, useEffect } from 'react';
-import { motion, animate } from 'framer-motion';
-import { Instagram, Github } from 'lucide-react';
+import { motion, animate, AnimatePresence } from 'framer-motion';
+import { Instagram, Github, Mail, X, ChevronDown, CheckCircle, Activity } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Stars from '../components/Stars';
 
-// Custom X (formerly Twitter) Logo Component
+// --- Custom Components ---
+
 const XLogo = ({ size = 20 }) => (
-  <svg 
-    width={size} 
-    height={size} 
-    viewBox="0 0 24 24" 
-    fill="currentColor" 
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
     <path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932 6.064-6.932zm-1.294 19.497h2.039L6.486 3.24H4.298l13.309 17.41z" />
   </svg>
 );
 
-// --- CountUp Component with Glow Pulse ---
+const FAQItem = ({ question, answer }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className="border-b border-gray-100 dark:border-white/5 last:border-0">
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        className="w-full py-6 flex justify-between items-center text-left hover:text-salvaGold transition-all duration-300"
+      >
+        <span className="text-lg font-bold tracking-tight">{question}</span>
+        <ChevronDown className={`transform transition-transform duration-500 ${isOpen ? 'rotate-180 text-salvaGold' : 'opacity-40'}`} />
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }} 
+            animate={{ height: 'auto', opacity: 1 }} 
+            exit={{ height: 0, opacity: 0 }} 
+            className="overflow-hidden"
+          >
+            <p className="pb-6 opacity-60 leading-relaxed text-sm sm:text-base max-w-3xl">
+              {answer}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const CountUp = ({ to, decimals = 0 }) => {
   const [currentValue, setCurrentValue] = useState(0);
   const [isCounting, setIsCounting] = useState(true);
 
   useEffect(() => {
-    const targetValue = typeof to === 'string' 
-      ? parseFloat(to.replace(/,/g, '')) 
-      : to;
-
+    const targetValue = typeof to === 'string' ? parseFloat(to.replace(/,/g, '')) : to;
     if (isNaN(targetValue)) return;
-
     setIsCounting(true);
     const controls = animate(0, targetValue, {
-      duration: 2.5, 
-      ease: [0.16, 1, 0.3, 1], 
+      duration: 2.5,
+      ease: [0.16, 1, 0.3, 1],
       onUpdate: (value) => setCurrentValue(value),
       onComplete: () => setIsCounting(false)
     });
-
     return () => controls.stop();
   }, [to]);
 
@@ -52,22 +70,22 @@ const CountUp = ({ to, decimals = 0 }) => {
       } : { textShadow: "0 0 0px rgba(212, 175, 55, 0)" }}
       transition={{ repeat: Infinity, duration: 2 }}
     >
-      {currentValue.toLocaleString('en-US', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals,
-      })}
+      {currentValue.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
     </motion.span>
   );
 };
+
+// --- Main Component ---
 
 const Home = () => {
   const [stats, setStats] = useState({ totalMinted: 0, userCount: 0 });
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  
+  const [isSupportOpen, setIsSupportOpen] = useState(false);
+  const [systemStatus, setSystemStatus] = useState('checking');
+
   const navigate = useNavigate();
 
-  // CHECK FOR EXISTING SESSION ON COMPONENT MOUNT - Redirect authenticated users to dashboard
   useEffect(() => {
     const checkExistingSession = () => {
       try {
@@ -80,13 +98,11 @@ const Home = () => {
           }
         }
       } catch (err) {
-        console.error('Session check failed:', err);
         localStorage.removeItem('salva_user');
       } finally {
         setCheckingAuth(false);
       }
     };
-
     checkExistingSession();
   }, [navigate]);
 
@@ -94,29 +110,33 @@ const Home = () => {
     const fetchStats = async () => {
       try {
         const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-        const res = await fetch(`${API_BASE_URL}/api/stats`, {
-          signal: AbortSignal.timeout(10000) 
-        });
-        
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${API_BASE_URL}/api/stats`, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error();
         const data = await res.json();
-        
         setStats({ 
-          totalMinted: parseFloat(data.totalMinted || 0),
-          userCount: parseInt(data.userCount || 0)
+          totalMinted: parseFloat(data.totalMinted || 0), 
+          userCount: parseInt(data.userCount || 0) 
         });
-        
+        setSystemStatus('operational');
         setLoading(false);
       } catch (err) {
-        console.log("⚠️ Stats fetch failed:", err.message);
+        setSystemStatus('syncing');
         setLoading(false);
       }
     };
-    
     fetchStats();
     const interval = setInterval(fetchStats, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleSupportSubmit = (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const subject = `SALVA SUPPORT: ${formData.get('topic')}`;
+    const body = `Name: ${formData.get('name')}\nAccount: ${formData.get('account')}\nIssue: ${formData.get('message')}`;
+    window.location.href = `mailto:salva.notify@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    setIsSupportOpen(false);
+  };
 
   const fadeIn = {
     initial: { opacity: 0, y: 30 },
@@ -125,11 +145,10 @@ const Home = () => {
     transition: { duration: 0.8 }
   };
 
-  // Show loading screen while checking authentication
   if (checkingAuth) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white dark:bg-[#0A0A0B]">
-        <div className="text-salvaGold font-black text-2xl animate-pulse">LOADING...</div>
+        <div className="text-salvaGold font-black text-2xl animate-pulse tracking-widest uppercase">Initializing...</div>
       </div>
     );
   }
@@ -138,8 +157,24 @@ const Home = () => {
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white transition-colors duration-500 overflow-x-hidden">
       <Stars />
 
+      {/* --- System Status Bar --- */}
+      <div className="fixed top-0 w-full z-50 bg-white/80 dark:bg-black/40 backdrop-blur-xl border-b border-gray-100 dark:border-white/5 py-3 px-6 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <div className={`w-2 h-2 rounded-full animate-pulse ${systemStatus === 'operational' ? 'bg-green-500 shadow-[0_0_12px_#22c55e]' : 'bg-yellow-500 shadow-[0_0_12px_#eab308]'}`} />
+          <span className="text-[10px] font-black uppercase tracking-[0.25em] opacity-80">
+            L2 Infrastructure: {systemStatus === 'operational' ? 'Operational' : 'Node Syncing'}
+          </span>
+        </div>
+        <div className="flex items-center gap-6">
+           <div className="hidden sm:flex items-center gap-2">
+             <Activity size={12} className="text-salvaGold" />
+             <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest">Base Mainnet</span>
+           </div>
+        </div>
+      </div>
+
       {/* Hero Section */}
-      <section className="relative pt-32 sm:pt-48 pb-12 sm:pb-20 px-4 sm:px-6 text-center">
+      <section className="relative pt-48 pb-12 sm:pb-20 px-4 sm:px-6 text-center">
         <motion.div {...fadeIn}>
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-black mb-4 sm:mb-6 tracking-tighter leading-[0.9] break-words px-2">
             ON-CHAIN PAYMENT <br className="hidden sm:block" />
@@ -149,7 +184,7 @@ const Home = () => {
           </h1>
           <p className="text-base sm:text-lg md:text-xl opacity-60 max-w-2xl mx-auto leading-relaxed px-4">
             Salva is the premier on-chain financial protocol designed for everyday Nigerian payments. 
-            Instant settlement. Zero friction. Built on Base.
+            Instant settlement. Zero friction. Built on Base Mainnet.
           </p>
         </motion.div>
       </section>
@@ -183,7 +218,34 @@ const Home = () => {
         />
       </section>
 
-      {/* --- UPDATED SOCIAL FOOTER --- */}
+      {/* FAQ Section */}
+      <section className="max-w-4xl mx-auto px-6 py-24 sm:py-32">
+        <motion.div {...fadeIn} className="text-center mb-16">
+          <h2 className="text-3xl sm:text-5xl font-black tracking-tighter mb-4">FAQS</h2>
+          <p className="opacity-50 uppercase text-xs tracking-[0.3em] font-bold">Everything you need to know</p>
+        </motion.div>
+        
+        <motion.div {...fadeIn} className="space-y-2">
+          <FAQItem 
+            question="What makes Salva a 'Smart' wallet?" 
+            answer="Traditional wallets require you to manage seed phrases and pay gas fees for every move. Salva uses Safe Smart Account technology on Base L2, meaning your account is a smart contract that supports gasless interactions and enhanced security." 
+          />
+          <FAQItem 
+            question="Is this running on Mainnet?" 
+            answer="Yes. Salva is deployed on the Base Layer 2 Mainnet. This ensures that every transaction is settled with the security of Ethereum but at the speed and cost required for real-world Nigerian payments." 
+          />
+          <FAQItem 
+            question="How are NGNs valued?" 
+            answer="NGNs on the Salva Network are pegged 1:1 to the Nigerian Naira. This stability allows users to transact on-chain without worrying about the price fluctuations typically associated with crypto." 
+          />
+          <FAQItem 
+            question="Who controls my funds?" 
+            answer="You do. Salva is non-custodial infrastructure. While our manager wallet facilitates transactions to ensure they are gasless for you, the ultimate permission to move funds rests with your specific Smart Account keys." 
+          />
+        </motion.div>
+      </section>
+
+      {/* Footer */}
       <footer className="max-w-6xl mx-auto px-4 sm:px-6 py-20 border-t border-gray-100 dark:border-white/5">
         <div className="flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="text-center md:text-left">
@@ -207,6 +269,14 @@ const Home = () => {
               icon={<Github size={20} />} 
               label="GitHub" 
             />
+            {/* SUPPORT MODAL TRIGGER */}
+            <button 
+              onClick={() => setIsSupportOpen(true)}
+              className="p-3 rounded-full bg-gray-50 dark:bg-white/5 border border-gray-100 dark:border-white/10 transition-all duration-300 opacity-60 hover:opacity-100 hover:text-salvaGold flex items-center justify-center"
+              aria-label="Contact Support"
+            >
+              <Mail size={20} />
+            </button>
           </div>
 
           <div className="text-[10px] uppercase tracking-widest opacity-30 font-bold">
@@ -214,6 +284,58 @@ const Home = () => {
           </div>
         </div>
       </footer>
+
+      {/* --- Support Modal --- */}
+      <AnimatePresence>
+        {isSupportOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setIsSupportOpen(false)} 
+              className="absolute inset-0 bg-black/90 backdrop-blur-md" 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 30 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.9, opacity: 0, y: 30 }}
+              className="relative w-full max-w-lg bg-white dark:bg-[#0D0D0E] border border-black/5 dark:border-white/10 rounded-[2.5rem] p-8 sm:p-10 shadow-2xl"
+            >
+              <button 
+                onClick={() => setIsSupportOpen(false)} 
+                className="absolute top-8 right-8 opacity-40 hover:opacity-100 transition-opacity"
+              >
+                <X size={24} />
+              </button>
+              
+              <div className="mb-8">
+                <h2 className="text-3xl font-black tracking-tighter mb-2">GET HELP</h2>
+                <p className="text-sm opacity-50 uppercase tracking-widest font-bold">Direct line to Salva Notify</p>
+              </div>
+              
+              <form onSubmit={handleSupportSubmit} className="space-y-4">
+                <div className="space-y-4">
+                  <input required name="name" placeholder="Full Name" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 transition-colors" />
+                  <input name="account" placeholder="Salva Account Number (Optional)" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 transition-colors" />
+                  <select name="topic" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 appearance-none transition-colors">
+                    <option value="General">General Inquiry</option>
+                    <option value="Transaction">Transaction Issue</option>
+                    <option value="Smart Account">Smart Wallet Access</option>
+                    <option value="Feedback">Feedback / Suggestions</option>
+                  </select>
+                  <textarea required name="message" rows="4" placeholder="How can we help you today?" className="w-full bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/5 rounded-2xl p-4 outline-none focus:border-salvaGold/50 resize-none transition-colors"></textarea>
+                </div>
+                
+                <button type="submit" className="w-full py-5 bg-salvaGold text-black font-black rounded-2xl hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+                  <Mail size={18} />
+                  SEND REQUEST
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -243,7 +365,7 @@ const StatCard = ({ title, value, suffix = "" }) => (
         {value}
       </h3>
       {suffix && (
-        <span className="text-xs sm:text-sm md:text-base font-bold opacity-40 ml-2 whitespace-nowrap">
+        <span className="text-xs sm:text-sm md:text-base font-bold opacity-40 ml-2 whitespace-nowrap uppercase tracking-widest">
           {suffix}
         </span>
       )}
