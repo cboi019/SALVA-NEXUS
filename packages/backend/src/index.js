@@ -42,6 +42,14 @@ const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const validator = require("validator");
 
+// ===============================================
+// HELPER: ENSURE ADDRESS MATCHING
+// ===============================================
+function normalizeAddress(address) {
+  if (!address) return null;
+  return address.toLowerCase();
+}
+
 // Initialize services
 const resend = new Resend(process.env.RESEND_API_KEY);
 const relay = new GelatoRelay();
@@ -959,12 +967,24 @@ app.post("/api/transfer", async (req, res) => {
         await applyCooldown(safeAddress, 20);
 
         // ✅ SEND EMAILS (Only on Success)
+        console.log(`🔍 Looking for sender: ${normalizeAddress(safeAddress)}`);
+        console.log(
+          `🔍 Looking for receiver: ${normalizeAddress(recipientAddress)}`,
+        );
+
         const senderUser = await User.findOne({
-          safeAddress: safeAddress.toLowerCase(),
+          safeAddress: normalizeAddress(safeAddress),
         });
         const receiverUser = await User.findOne({
-          safeAddress: recipientAddress.toLowerCase(),
+          safeAddress: normalizeAddress(recipientAddress),
         });
+
+        console.log(
+          `🔍 Sender found: ${!!senderUser}, Email: ${senderUser?.email || "NONE"}`,
+        );
+        console.log(
+          `🔍 Receiver found: ${!!receiverUser}, Email: ${receiverUser?.email || "NONE"}`,
+        );
 
         console.log(
           `📧 Preparing emails - Sender: ${senderUser?.email || "NOT FOUND"}, Receiver: ${receiverUser?.email || "NOT FOUND"}`,
@@ -1134,12 +1154,24 @@ app.post("/api/approve", async (req, res) => {
       await applyCooldown(safeAddress, 20);
 
       // ✅ SEND EMAILS (Only on Success)
+      console.log(`🔍 Looking for approver: ${normalizeAddress(safeAddress)}`);
+      console.log(
+        `🔍 Looking for spender: ${normalizeAddress(finalSpenderAddress)}`,
+      );
+
       const approverUser = await User.findOne({
-        safeAddress: safeAddress.toLowerCase(),
+        safeAddress: normalizeAddress(safeAddress),
       });
       const spenderUser = await User.findOne({
-        safeAddress: finalSpenderAddress.toLowerCase(),
+        safeAddress: normalizeAddress(finalSpenderAddress),
       });
+
+      console.log(
+        `🔍 Approver found: ${!!approverUser}, Email: ${approverUser?.email || "NONE"}`,
+      );
+      console.log(
+        `🔍 Spender found: ${!!spenderUser}, Email: ${spenderUser?.email || "NONE"}`,
+      );
 
       console.log(
         `📧 Preparing approval emails - Approver: ${approverUser?.email || "NOT FOUND"}, Spender: ${spenderUser?.email || "NOT FOUND"}`,
@@ -1351,12 +1383,22 @@ app.post("/api/transferFrom", async (req, res) => {
       await applyCooldown(safeAddress, 20);
 
       // ✅ SEND EMAILS (Only on Success)
+      console.log(`🔍 Looking for from-user: ${normalizeAddress(fromAddress)}`);
+      console.log(`🔍 Looking for to-user: ${normalizeAddress(toAddress)}`);
+
       const fromUser = await User.findOne({
-        safeAddress: fromAddress.toLowerCase(),
+        safeAddress: normalizeAddress(fromAddress),
       });
       const toUser = await User.findOne({
-        safeAddress: toAddress.toLowerCase(),
+        safeAddress: normalizeAddress(toAddress),
       });
+
+      console.log(
+        `🔍 From-user found: ${!!fromUser}, Email: ${fromUser?.email || "NONE"}`,
+      );
+      console.log(
+        `🔍 To-user found: ${!!toUser}, Email: ${toUser?.email || "NONE"}`,
+      );
 
       console.log(
         `📧 Preparing transferFrom emails - From: ${fromUser?.email || "NOT FOUND"}, To: ${toUser?.email || "NOT FOUND"}`,
