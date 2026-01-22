@@ -236,7 +236,7 @@ const Home = () => {
 
           <div className="flex items-center gap-6">
             <SocialIcon 
-              href="https://x.com/salvaFinance" 
+              href="https://x.com/salva_N" 
               icon={<XLogo size={18} />} 
               label="X (Twitter)" 
             />
