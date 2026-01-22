@@ -33,7 +33,7 @@ async function fixAddresses() {
   } catch (error) {
     console.error("❌ Migration failed:", error);
     process.exit(1);
-  }
+  }//
 }
 
 fixAddresses();
