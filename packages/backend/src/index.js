@@ -32,6 +32,7 @@ const {
   sendTransactionEmailToSender,
   sendTransactionEmailToReceiver,
   sendSecurityChangeEmail,
+  sendEmailChangeConfirmation 
 } = require("./services/emailService");
 
 // ===============================================
@@ -1588,6 +1589,7 @@ app.post("/api/user/reset-pin", authLimiter, async (req, res) => {
   }
 });
 
+
 app.post("/api/user/update-email", authLimiter, async (req, res) => {
   try {
     const { oldEmail, newEmail } = req.body;
@@ -1617,19 +1619,28 @@ app.post("/api/user/update-email", authLimiter, async (req, res) => {
 
     delete otpStore[sanitizedOldEmail];
 
-    // ✅ SEND SECURITY EMAIL
+    // ✅ SEND TWO EMAILS - Security alert to OLD email, Confirmation to NEW email
     try {
       const accountNum =
         (await getAccountNumberFromAddress(user.safeAddress)) ||
         user.safeAddress;
+      
+      // Send security alert to OLD email (with warning about unauthorized change)
       await sendSecurityChangeEmail(
-        sanitizedNewEmail,
+        sanitizedOldEmail,  // ✅ OLD EMAIL gets the warning
         user.username,
         "email",
-        accountNum,
+        accountNum
+      );
+      
+      // Send confirmation to NEW email (friendly, no panic)
+      await sendEmailChangeConfirmation(
+        sanitizedNewEmail,  // ✅ NEW EMAIL gets the confirmation
+        user.username,
+        accountNum
       );
     } catch (emailError) {
-      console.error("❌ Security email error:", emailError.message);
+      console.error("❌ Email notification error:", emailError.message);
     }
 
     res.json({

@@ -78,7 +78,7 @@ async function sendWelcomeEmail(userEmail, userName) {
         <!-- Footer -->
         <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
           <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">
-            This is an automated message. If you need help, contact us:
+            Need help? Contact our support team
           </p>
           <div style="text-align: center;">
             <a href="mailto:salva.notify@gmail.com" 
@@ -177,10 +177,13 @@ async function sendTransactionEmailToSender(senderEmail, senderName, recipientId
         
         <!-- Footer -->
         <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 10px 0; text-align: center;">Need help? Contact our support team</p>
-          <p style="text-align: center; margin: 0;">
-            <a href="mailto:salva.notify@gmail.com" style="color: #D4AF37; text-decoration: none; font-weight: 700; font-size: 14px;">salva.notify@gmail.com</a>
-          </p>
+          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">Need help? Contact our support team</p>
+          <div style="text-align: center;">
+            <a href="mailto:salva.notify@gmail.com" 
+               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
+              Contact Support
+            </a>
+          </div>
         </div>
       </div>
     </body>
@@ -254,10 +257,13 @@ async function sendTransactionEmailToReceiver(receiverEmail, receiverName, sende
         
         <!-- Footer -->
         <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 10px 0; text-align: center;">Need help? Contact our support team</p>
-          <p style="text-align: center; margin: 0;">
-            <a href="mailto:salva.notify@gmail.com" style="color: #D4AF37; text-decoration: none; font-weight: 700; font-size: 14px;">salva.notify@gmail.com</a>
-          </p>
+          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">Need help? Contact our support team</p>
+          <div style="text-align: center;">
+            <a href="mailto:salva.notify@gmail.com" 
+               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
+              Contact Support
+            </a>
+          </div>
         </div>
       </div>
     </body>
@@ -278,7 +284,7 @@ async function sendTransactionEmailToReceiver(receiverEmail, receiverName, sende
 }
 
 // ===============================================
-// SECURITY CHANGE EMAIL
+// SECURITY CHANGE EMAIL - FOR OLD EMAIL (WARNING)
 // ===============================================
 async function sendSecurityChangeEmail(userEmail, userName, changeType, accountNumber) {
   const changeTypeText = {
@@ -351,10 +357,7 @@ async function sendSecurityChangeEmail(userEmail, userName, changeType, accountN
         
         <!-- Footer -->
         <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
-          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 10px 0; text-align: center;">SALVA Security Team</p>
-          <p style="text-align: center; margin: 0;">
-            <a href="mailto:salva.notify@gmail.com" style="color: #D4AF37; text-decoration: none; font-weight: 700; font-size: 14px;">salva.notify@gmail.com</a>
-          </p>
+          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0; text-align: center;">SALVA Security Team</p>
         </div>
       </div>
     </body>
@@ -374,9 +377,101 @@ async function sendSecurityChangeEmail(userEmail, userName, changeType, accountN
   }
 }
 
+// ===============================================
+// EMAIL CHANGE CONFIRMATION - FOR NEW EMAIL (NO WARNING)
+// ===============================================
+async function sendEmailChangeConfirmation(newEmail, userName, accountNumber) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="color-scheme" content="light dark">
+      <meta name="supported-color-schemes" content="light dark">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #0A0A0B; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <div style="max-width: 600px; margin: 40px auto; background: #1A1A1B; border-radius: 20px; overflow: hidden; box-shadow: 0 8px 32px rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.2);">
+        
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); padding: 48px 40px; text-align: center;">
+          <h1 style="margin: 0; color: #0A0A0B; font-size: 42px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SALVA</h1>
+          <p style="margin: 8px 0 0 0; color: rgba(10, 10, 11, 0.8); font-size: 12px; text-transform: uppercase; letter-spacing: 3px; font-weight: 600;">Digital Finance Platform</p>
+        </div>
+        
+        <!-- Success Badge -->
+        <div style="padding: 40px 40px 32px 40px;">
+          <div style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 18px 28px; border-radius: 16px; text-align: center; font-weight: 900; font-size: 16px; letter-spacing: 2px; box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3);">
+            ✓ EMAIL UPDATED SUCCESSFULLY
+          </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div style="padding: 0 40px 40px 40px;">
+          <p style="color: #FFFFFF; font-size: 18px; margin: 0 0 12px 0; font-weight: 700;">Hello ${userName},</p>
+          <p style="color: rgba(255, 255, 255, 0.7); font-size: 15px; margin: 0 0 28px 0; line-height: 1.7;">
+            Your email address has been successfully updated. This is now your primary email for all SALVA communications and notifications.
+          </p>
+          
+          <!-- Info Box -->
+          <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 16px; padding: 28px; margin-bottom: 28px;">
+            <p style="color: #10B981; font-size: 15px; margin: 0 0 14px 0; font-weight: 800;">✓ Your new email is now active</p>
+            <p style="color: rgba(255, 255, 255, 0.75); font-size: 14px; margin: 0 0 20px 0; line-height: 1.7;">
+              You'll receive all future account notifications, transaction alerts, and security updates at this email address.
+            </p>
+            <p style="color: rgba(255, 255, 255, 0.8); font-size: 13px; margin: 0 0 6px 0;">
+              <strong style="color: #D4AF37;">Your Account Number:</strong>
+            </p>
+            <p style="font-family: 'Courier New', monospace; background: rgba(212, 175, 55, 0.1); color: #D4AF37; padding: 12px 16px; border-radius: 8px; font-size: 15px; font-weight: 700; margin: 0; border: 1px solid rgba(212, 175, 55, 0.3);">${accountNumber}</p>
+          </div>
+          
+          <!-- Security Notice Box -->
+          <div style="background: rgba(245, 158, 11, 0.15); border-left: 4px solid #F59E0B; padding: 20px 24px; border-radius: 12px; margin-bottom: 28px;">
+            <p style="color: #F59E0B; font-size: 14px; margin: 0 0 10px 0; font-weight: 800;">🔒 24-Hour Security Lock Active</p>
+            <p style="color: rgba(255, 255, 255, 0.75); font-size: 13px; margin: 0; line-height: 1.7;">
+              As a security measure, your account has been temporarily restricted for 24 hours. You will not be able to perform transactions during this period.
+            </p>
+          </div>
+          
+          <p style="color: rgba(255, 255, 255, 0.7); font-size: 14px; margin: 0; line-height: 1.7; text-align: center;">
+            Thank you for keeping your account information up to date.
+          </p>
+          
+          <p style="color: rgba(255, 255, 255, 0.5); font-size: 14px; margin: 28px 0 0 0; text-align: center; font-style: italic;">
+            — The SALVA Team
+          </p>
+        </div>
+        
+        <!-- Footer -->
+        <div style="background: rgba(0, 0, 0, 0.3); padding: 32px 40px; border-top: 1px solid rgba(212, 175, 55, 0.2);">
+          <p style="color: rgba(255, 255, 255, 0.5); font-size: 13px; margin: 0 0 18px 0; text-align: center;">Need help? Contact our support team</p>
+          <div style="text-align: center;">
+            <a href="mailto:salva.notify@gmail.com" 
+               style="display: inline-block; background: linear-gradient(135deg, #D4AF37 0%, #F4D03F 100%); color: #0A0A0B; padding: 14px 32px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 14px; letter-spacing: 1px; box-shadow: 0 4px 16px rgba(212, 175, 55, 0.4);">
+              Contact Support
+            </a>
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  try {
+    await resend.emails.send({
+      from: 'Salva <no-reply@salva-nexus.org>',
+      to: newEmail,
+      subject: '✓ Email Updated Successfully - SALVA',
+      html: html
+    });
+    console.log(`📧 Email change confirmation sent to: ${newEmail}`);
+  } catch (error) {
+    console.error('❌ Failed to send email change confirmation:', error.message);
+  }
+}
+
 module.exports = {
   sendWelcomeEmail,
   sendTransactionEmailToSender,
   sendTransactionEmailToReceiver,
-  sendSecurityChangeEmail
+  sendSecurityChangeEmail,
+  sendEmailChangeConfirmation
 };
