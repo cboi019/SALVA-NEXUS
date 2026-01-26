@@ -16,6 +16,7 @@ const ForgotPassword = () => {
   const [message, setMessage] = useState({ text: '', type: '' });
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showWarning, setShowWarning] = useState(false); // ✅ NEW STATE
   
   const navigate = useNavigate();
 
@@ -40,6 +41,7 @@ const ForgotPassword = () => {
     setLoading(false);
   };
 
+  // ✅ ENHANCED - Show warning instead of directly proceeding
   const handleVerifyOTP = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -50,8 +52,9 @@ const ForgotPassword = () => {
         body: JSON.stringify({ email, code: otp })
       });
       if (res.ok) {
-        setStep(3);
-        setMessage({ text: 'Code verified! Set your new password.', type: 'success' });
+        // ✅ Show warning instead of directly going to step 3
+        setShowWarning(true);
+        setMessage({ text: 'Code verified!', type: 'success' });
       } else {
         setMessage({ text: 'Invalid or expired code.', type: 'error' });
       }
@@ -61,9 +64,27 @@ const ForgotPassword = () => {
     setLoading(false);
   };
 
+  // ✅ NEW FUNCTION - Handle proceeding after warning acceptance
+  const handleProceedToReset = () => {
+    setShowWarning(false);
+    setStep(3);
+    setMessage({ text: 'Set your new password.', type: 'success' });
+  };
+
+  // ✅ FIXED - Added response parsing and validation
   const handleResetPassword = async (e) => {
     e.preventDefault();
-    if (newPassword !== confirmPassword) return setMessage({ text: 'Passwords do not match!', type: 'error' });
+    if (newPassword !== confirmPassword) {
+      return setMessage({ text: 'Passwords do not match!', type: 'error' });
+    }
+
+    // ✅ Validate password strength
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+      return setMessage({ 
+        text: 'Password must be 8+ characters with uppercase, lowercase, and number', 
+        type: 'error' 
+      });
+    }
 
     setLoading(true);
     try {
@@ -72,14 +93,25 @@ const ForgotPassword = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, newPassword })
       });
+
+      const data = await res.json(); // ✅ FIX: Actually parse the response
+
       if (res.ok) {
-        setMessage({ text: 'Password reset successful! Redirecting...', type: 'success' });
+        setMessage({ 
+          text: 'Password reset successful! Account locked for 24 hours. Redirecting...', 
+          type: 'success' 
+        });
         setTimeout(() => navigate('/login'), 3000);
+      } else {
+        // ✅ FIX: Show actual error message from backend
+        setMessage({ text: data.message || 'Failed to update password.', type: 'error' });
       }
     } catch (err) {
-      setMessage({ text: 'Failed to update password.', type: 'error' });
+      console.error('Reset error:', err);
+      setMessage({ text: 'Network error. Please try again.', type: 'error' });
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -189,6 +221,48 @@ const ForgotPassword = () => {
           )}
         </AnimatePresence>
       </motion.div>
+
+      {/* ✅ WARNING MODAL */}
+      <AnimatePresence>
+        {showWarning && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <motion.div 
+              onClick={() => setShowWarning(false)} 
+              className="absolute inset-0 bg-black/95 backdrop-blur-md" 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+            />
+            <motion.div 
+              onClick={(e) => e.stopPropagation()} 
+              className="relative bg-white dark:bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-gray-200 dark:border-white/10 shadow-2xl z-10" 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.95 }}
+            >
+              <h3 className="text-2xl font-black mb-4 text-black dark:text-white">⚠️ Security Warning</h3>
+              <p className="text-sm opacity-80 mb-6 text-gray-700 dark:text-gray-300">
+                Changing your password will <strong className="text-salvaGold">lock your account for 24 hours</strong>. 
+                You won't be able to perform any transactions during this period.
+              </p>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setShowWarning(false)} 
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 font-bold hover:bg-gray-100 dark:hover:bg-white/5 text-black dark:text-white"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleProceedToReset} 
+                  className="flex-1 py-3 rounded-xl bg-salvaGold text-black font-bold hover:brightness-110"
+                >
+                  OK, PROCEED
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

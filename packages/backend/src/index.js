@@ -538,38 +538,68 @@ app.post("/api/auth/verify-otp", authLimiter, (req, res) => {
   }
 });
 
+// ===================================================================
+// REPLACE THE /api/auth/reset-password ROUTE (around line 382) WITH THIS:
+// ===================================================================
+
 app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
   try {
     const { email, newPassword } = req.body;
     const sanitizedEmail = sanitizeEmail(email);
 
+    // ✅ CHECK OTP VERIFICATION
     if (!otpStore[sanitizedEmail] || !otpStore[sanitizedEmail].verified) {
-      return res
-        .status(401)
-        .json({ message: "Unauthorized. Verify OTP first." });
+      return res.status(401).json({ message: "Unauthorized. Verify OTP first." });
     }
 
-    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+    // ✅ VALIDATE PASSWORD STRENGTH
+    if (!newPassword || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
       return res.status(400).json({
-        message:
-          "Password must be at least 8 characters with uppercase, lowercase, and number",
+        message: "Password must be at least 8 characters with uppercase, lowercase, and number",
       });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // ✅ APPLY 24-HOUR LOCKDOWN
+    const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
     const user = await User.findOneAndUpdate(
       { email: sanitizedEmail },
-      { password: hashedPassword },
-      { new: true },
+      { 
+        password: hashedPassword,
+        accountLockedUntil: lockoutTime // ✅ ADD LOCKDOWN
+      },
+      { new: true }
     );
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
 
+    // ✅ CLEAN UP OTP
     delete otpStore[sanitizedEmail];
-    res.json({ success: true, message: "Password updated successfully" });
+
+    // ✅ SEND SECURITY EMAIL
+    try {
+      const accountNum = await getAccountNumberFromAddress(user.safeAddress) || user.safeAddress;
+      await sendSecurityChangeEmail(
+        sanitizedEmail,
+        user.username,
+        "password",
+        accountNum
+      );
+    } catch (emailError) {
+      console.error("❌ Security email error:", emailError.message);
+    }
+
+    res.json({ 
+      success: true, 
+      message: "Password updated successfully. Account locked for 24 hours.",
+      lockedUntil: lockoutTime 
+    });
   } catch (err) {
+    console.error("❌ Reset password error:", err);
     return handleError(err, res, "Password reset failed");
   }
 });
