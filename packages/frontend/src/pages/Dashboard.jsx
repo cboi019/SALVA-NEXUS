@@ -1,42 +1,54 @@
 // Salva-Digital-Tech/packages/backend/src/pages/Dashboard.jsx
-import { API_BASE_URL } from '../config';
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { API_BASE_URL } from "../config";
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Link, useNavigate } from "react-router-dom";
 import { jsPDF } from "jspdf";
-import Stars from '../components/Stars';
+import Stars from "../components/Stars";
 
 const Dashboard = () => {
   const [user, setUser] = useState(null);
-  const [balance, setBalance] = useState('0.00');
+  const [balance, setBalance] = useState("0.00");
   const [transactions, setTransactions] = useState([]);
   const [isSendOpen, setIsSendOpen] = useState(false);
-  const [transferData, setTransferData] = useState({ to: '', amount: '' });
+  const [transferData, setTransferData] = useState({ to: "", amount: "" });
   const [loading, setLoading] = useState(false);
-  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+  const [notification, setNotification] = useState({
+    show: false,
+    message: "",
+    type: "",
+  });
   const [amountError, setAmountError] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
-  const [activeTab, setActiveTab] = useState('activity'); 
-  const [approveData, setApproveData] = useState({ spender: '', amount: '' });
-  const [transferFromData, setTransferFromData] = useState({ from: '', to: '', amount: '' });
+  const [activeTab, setActiveTab] = useState("activity");
+  const [approveData, setApproveData] = useState({ spender: "", amount: "" });
+  const [transferFromData, setTransferFromData] = useState({
+    from: "",
+    to: "",
+    amount: "",
+  });
   const [approvals, setApprovals] = useState([]);
-  const [incomingAllowances, setIncomingAllowances] = useState([]); 
+  const [incomingAllowances, setIncomingAllowances] = useState([]);
   const [isRefreshingApprovals, setIsRefreshingApprovals] = useState(false);
 
+  // ✅ NEW: Confirmation modal state
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [confirmationData, setConfirmationData] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null); // 'send', 'approve', 'transferFrom'
   // PIN VERIFICATION STATE
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
-  const [transactionPin, setTransactionPin] = useState('');
+  const [transactionPin, setTransactionPin] = useState("");
   const [pinAttempts, setPinAttempts] = useState(0);
   const [pendingTransaction, setPendingTransaction] = useState(null);
   const [decryptedPrivateKey, setDecryptedPrivateKey] = useState(null);
   const [noPinWarning, setNoPinWarning] = useState(false);
   const [isAccountLocked, setIsAccountLocked] = useState(false);
-  const [lockMessage, setLockMessage] = useState('');
-  
+  const [lockMessage, setLockMessage] = useState("");
+
   const navigate = useNavigate();
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('salva_user');
+    const savedUser = localStorage.getItem("salva_user");
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
@@ -52,10 +64,10 @@ const Dashboard = () => {
         }, 30000);
         return () => clearInterval(interval);
       } catch (error) {
-        window.location.href = '/login';
+        window.location.href = "/login";
       }
     } else {
-      window.location.href = '/login';
+      window.location.href = "/login";
     }
   }, []);
 
@@ -66,24 +78,28 @@ const Dashboard = () => {
         try {
           // ✅ FIX: Use email if available, fallback to username
           const identifier = user.email || user.username;
-          const res = await fetch(`${API_BASE_URL}/api/user/pin-status/${identifier}`);
+          const res = await fetch(
+            `${API_BASE_URL}/api/user/pin-status/${identifier}`,
+          );
           const data = await res.json();
-          
+
           if (!data.hasPin) {
             setNoPinWarning(true);
           }
-          
+
           if (data.isLocked) {
             setIsAccountLocked(true);
-            const hoursLeft = Math.ceil((new Date(data.lockedUntil) - new Date()) / (1000 * 60 * 60));
+            const hoursLeft = Math.ceil(
+              (new Date(data.lockedUntil) - new Date()) / (1000 * 60 * 60),
+            );
             setLockMessage(`Account locked for ${hoursLeft} more hours`);
           }
         } catch (err) {
-          console.error('Failed to check account status');
+          console.error("Failed to check account status");
         }
       }
     };
-    
+
     if (user) {
       checkAccountStatus();
     }
@@ -91,7 +107,10 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (notification.show) {
-      const timer = setTimeout(() => setNotification({ ...notification, show: false }), 4000);
+      const timer = setTimeout(
+        () => setNotification({ ...notification, show: false }),
+        4000,
+      );
       return () => clearTimeout(timer);
     }
   }, [notification]);
@@ -106,14 +125,17 @@ const Dashboard = () => {
     }
   }, [transferData.amount, balance]);
 
-  const showMsg = (msg, type = 'success') => setNotification({ show: true, message: msg, type });
+  const showMsg = (msg, type = "success") =>
+    setNotification({ show: true, message: msg, type });
 
   const fetchBalance = async (address) => {
     try {
       const res = await fetch(`${API_BASE_URL}/api/balance/${address}`);
       const data = await res.json();
       setBalance(parseFloat(data.balance || 0).toFixed(2));
-    } catch { setBalance('0.00'); }
+    } catch {
+      setBalance("0.00");
+    }
   };
 
   const fetchTransactions = async (address) => {
@@ -121,30 +143,42 @@ const Dashboard = () => {
       const res = await fetch(`${API_BASE_URL}/api/transactions/${address}`);
       const data = await res.json();
       setTransactions(Array.isArray(data) ? data : []);
-    } catch { setTransactions([]); }
+    } catch {
+      setTransactions([]);
+    }
   };
 
   const fetchApprovals = async (address, silent = false) => {
-    if(!silent) setIsRefreshingApprovals(true);
+    if (!silent) setIsRefreshingApprovals(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/approvals/${address}`);
       const data = await res.json();
       setApprovals(data);
-    } catch (err) { console.error("Failed to load list"); }
-    finally { setIsRefreshingApprovals(false); }
+    } catch (err) {
+      console.error("Failed to load list");
+    } finally {
+      setIsRefreshingApprovals(false);
+    }
   };
 
   const fetchIncomingAllowances = async (address, silent = false) => {
-    if(!silent) setIsRefreshingApprovals(true);
+    if (!silent) setIsRefreshingApprovals(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/allowances-for/${address}`);
       const data = await res.json();
       setIncomingAllowances(data);
-    } catch (err) { console.error("Failed to load incoming allowances"); }
-    finally { setIsRefreshingApprovals(false); }
+    } catch (err) {
+      console.error("Failed to load incoming allowances");
+    } finally {
+      setIsRefreshingApprovals(false);
+    }
   };
 
-  const formatNumber = (num) => parseFloat(num).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatNumber = (num) =>
+    parseFloat(num).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
   // Receipt generation with correct status and timestamp
   const downloadReceipt = (e, tx) => {
@@ -153,11 +187,11 @@ const Dashboard = () => {
     const gold = [212, 175, 55];
     const dark = [10, 10, 11];
     const red = [239, 68, 68];
-    const isReceived = tx.displayType === 'receive';
-    const isSuccessful = tx.status === 'successful';
-    
+    const isReceived = tx.displayType === "receive";
+    const isSuccessful = tx.status === "successful";
+
     doc.setFillColor(dark[0], dark[1], dark[2]);
-    doc.rect(0, 0, 210, 297, 'F');
+    doc.rect(0, 0, 210, 297, "F");
     doc.setDrawColor(gold[0], gold[1], gold[2]);
     doc.setLineWidth(1);
     doc.rect(10, 10, 190, 277);
@@ -170,30 +204,36 @@ const Dashboard = () => {
     doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
     doc.setDrawColor(255, 255, 255, 0.1);
     doc.line(30, 65, 180, 65);
-    
+
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("AMOUNT TRANSFERRED", 40, 90);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(24);
     doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
-    
+
+    // SENDER (FROM)
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("FROM (SENDER)", 40, 125);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
-    const senderInfo = isReceived ? tx.displayPartner : (user.accountNumber || user.safeAddress);
+    const senderInfo = isReceived
+      ? tx.fromUsername || tx.displayPartner
+      : user.username;
     doc.text(senderInfo, 40, 135);
-    
+
+    // RECIPIENT (TO)
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("TO (RECIPIENT)", 40, 155);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(10);
-    const recipientInfo = isReceived ? (user.accountNumber || user.safeAddress) : tx.displayPartner;
+    const recipientInfo = isReceived
+      ? user.username
+      : tx.toUsername || tx.displayPartner;
     doc.text(recipientInfo, 40, 165);
-    
+
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("DATE & TIME", 40, 185);
@@ -201,18 +241,18 @@ const Dashboard = () => {
     doc.setFontSize(10);
     const date = new Date(tx.date);
     const dateStr = date.toLocaleDateString();
-    const timeStr = date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
+    const timeStr = date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
     doc.text(`${dateStr} ${timeStr}`, 40, 195);
-    
+
     doc.setFontSize(12);
     doc.setTextColor(150, 150, 150);
     doc.text("BLOCKCHAIN STATUS", 40, 215);
     doc.setFontSize(14);
-    
+
     if (isSuccessful) {
       doc.setTextColor(gold[0], gold[1], gold[2]);
       doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 227);
@@ -220,25 +260,63 @@ const Dashboard = () => {
       doc.setTextColor(red[0], red[1], red[2]);
       doc.text("FAILED ON-CHAIN", 40, 227);
     }
-    
+
     doc.setFontSize(8);
     doc.setTextColor(100, 100, 100);
-    doc.text(`REF: ${tx._id || 'SALVA-TX'}`, 105, 270, { align: "center" });
-    
+    doc.text(`REF: ${tx._id || "SALVA-TX"}`, 105, 270, { align: "center" });
+
     doc.save(`Salva_Receipt_${Date.now()}.pdf`);
     showMsg("Professional receipt downloaded!");
+  };
+
+  // ✅ NEW: Resolve and confirm recipient
+  const resolveAndConfirm = async (accountInput, amount, action) => {
+    if (!accountInput || !amount) {
+      return showMsg("Please fill all fields", "error");
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/resolve-account-info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountNumberOrAddress: accountInput }),
+      });
+
+      const data = await response.json();
+
+      if (!data.found) {
+        setLoading(false);
+        return showMsg("Account not found or invalid", "error");
+      }
+
+      // Show confirmation modal
+      setConfirmationData({
+        username: data.username,
+        accountNumber: data.accountNumber,
+        amount: amount,
+        originalInput: accountInput,
+      });
+      setPendingAction(action);
+      setIsConfirmModalOpen(true);
+    } catch (err) {
+      showMsg("Failed to resolve account", "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ✅ FIX 1: SEND button opens form first (not PIN modal)
   const handleTransferClick = () => {
     if (isAccountLocked) {
-      return showMsg(lockMessage, 'error');
+      return showMsg(lockMessage, "error");
     }
-    
+
     if (noPinWarning) {
       return; // Warning is already showing
     }
-    
+
     // Open send form FIRST (PIN will be asked on submit)
     setIsSendOpen(true);
   };
@@ -246,45 +324,45 @@ const Dashboard = () => {
   // ✅ FIX 2: Approve asks for PIN immediately (form already visible)
   const handleApproveClick = (e) => {
     e.preventDefault();
-    
+
     if (isAccountLocked) {
-      return showMsg(lockMessage, 'error');
+      return showMsg(lockMessage, "error");
     }
-    
+
     if (noPinWarning) {
-      return showMsg('Please set transaction PIN in Account Settings', 'error');
+      return showMsg("Please set transaction PIN in Account Settings", "error");
     }
-    
+
     // Ask for PIN immediately for approve (since form is already visible)
-    setPendingTransaction('approve');
+    setPendingTransaction("approve");
     setIsPinModalOpen(true);
-    setTransactionPin('');
+    setTransactionPin("");
     setPinAttempts(0);
   };
 
   // ✅ FIX 3: TransferFrom asks for PIN immediately (form already visible)
   const handleTransferFromClick = (e) => {
     e.preventDefault();
-    
+
     if (isAccountLocked) {
-      return showMsg(lockMessage, 'error');
+      return showMsg(lockMessage, "error");
     }
-    
+
     if (noPinWarning) {
-      return showMsg('Please set transaction PIN in Account Settings', 'error');
+      return showMsg("Please set transaction PIN in Account Settings", "error");
     }
-    
+
     // Ask for PIN immediately for transferFrom (since form is already visible)
-    setPendingTransaction('transferFrom');
+    setPendingTransaction("transferFrom");
     setIsPinModalOpen(true);
-    setTransactionPin('');
+    setTransactionPin("");
     setPinAttempts(0);
   };
 
   // Verify PIN and proceed with transaction
   const verifyPinAndProceed = async () => {
     if (transactionPin.length !== 4) {
-      return showMsg('PIN must be 4 digits', 'error');
+      return showMsg("PIN must be 4 digits", "error");
     }
 
     setLoading(true);
@@ -292,14 +370,14 @@ const Dashboard = () => {
     try {
       // ✅ FIX: Use email if available, fallback to username
       const identifier = user.email || user.username;
-      
+
       const response = await fetch(`${API_BASE_URL}/api/user/verify-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: identifier, 
-          pin: transactionPin 
-        })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: identifier,
+          pin: transactionPin,
+        }),
       });
 
       const data = await response.json();
@@ -307,27 +385,34 @@ const Dashboard = () => {
       if (response.ok) {
         setDecryptedPrivateKey(data.privateKey);
         setIsPinModalOpen(false);
-        
-        if (pendingTransaction === 'send') {
+
+        if (pendingTransaction === "send") {
           // Don't open send form again, it's already open
           executeTransfer(data.privateKey);
-        } else if (pendingTransaction === 'approve') {
+        } else if (pendingTransaction === "approve") {
           executeApproval(data.privateKey);
-        } else if (pendingTransaction === 'transferFrom') {
+        } else if (pendingTransaction === "transferFrom") {
           executeTransferFrom(data.privateKey);
         }
       } else {
-        setPinAttempts(prev => prev + 1);
-        
-        if (pinAttempts >= 2) { // Changed from >= 3 to >= 2 (on 3rd failed attempt)
-          showMsg('Too many failed attempts. Redirecting to settings...', 'error');
-          setTimeout(() => navigate('/account-settings'), 2000);
+        setPinAttempts((prev) => prev + 1);
+
+        if (pinAttempts >= 2) {
+          // Changed from >= 3 to >= 2 (on 3rd failed attempt)
+          showMsg(
+            "Too many failed attempts. Redirecting to settings...",
+            "error",
+          );
+          setTimeout(() => navigate("/account-settings"), 2000);
         } else {
-          showMsg(`Invalid PIN. ${3 - pinAttempts - 1} attempts remaining`, 'error');
+          showMsg(
+            `Invalid PIN. ${3 - pinAttempts - 1} attempts remaining`,
+            "error",
+          );
         }
       }
     } catch (err) {
-      showMsg('Network error', 'error');
+      showMsg("Network error", "error");
     } finally {
       setLoading(false);
     }
@@ -336,31 +421,31 @@ const Dashboard = () => {
   // Execute actual transfer (called after PIN verification)
   const executeTransfer = async (privateKey) => {
     if (amountError) return showMsg("Insufficient balance", "error");
-    
+
     setLoading(true);
     showMsg("Transaction queued, waiting for confirmation...", "info");
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/transfer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           userPrivateKey: privateKey,
-          safeAddress: user.safeAddress, 
-          toInput: transferData.to, 
-          amount: transferData.amount 
-        })
+          safeAddress: user.safeAddress,
+          toInput: transferData.to,
+          amount: transferData.amount,
+        }),
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
-        showMsg('Transfer Successful!');
+        showMsg("Transfer Successful!");
         setIsSendOpen(false);
-        setTransferData({ to: '', amount: '' });
-        setTimeout(() => { 
-          fetchBalance(user.safeAddress); 
-          fetchTransactions(user.safeAddress); 
+        setTransferData({ to: "", amount: "" });
+        setTimeout(() => {
+          fetchBalance(user.safeAddress);
+          fetchTransactions(user.safeAddress);
         }, 3500);
       } else {
         showMsg(data.message || "Transfer failed", "error");
@@ -376,25 +461,25 @@ const Dashboard = () => {
   // Execute approval (called after PIN verification)
   const executeApproval = async (privateKey) => {
     setLoading(true);
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          userPrivateKey: privateKey, 
-          safeAddress: user.safeAddress, 
-          spenderInput: approveData.spender, 
-          amount: approveData.amount 
-        })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userPrivateKey: privateKey,
+          safeAddress: user.safeAddress,
+          spenderInput: approveData.spender,
+          amount: approveData.amount,
+        }),
       });
-      
+
       if (response.ok) {
         showMsg("Approval updated on-chain!");
-        setApproveData({ spender: '', amount: '' });
-        setTimeout(() => { 
-          fetchApprovals(user.safeAddress); 
-          fetchIncomingAllowances(user.safeAddress, true); 
+        setApproveData({ spender: "", amount: "" });
+        setTimeout(() => {
+          fetchApprovals(user.safeAddress);
+          fetchIncomingAllowances(user.safeAddress, true);
         }, 4000);
       } else {
         showMsg("Approval failed", "error");
@@ -410,30 +495,30 @@ const Dashboard = () => {
   // Execute transferFrom (called after PIN verification)
   const executeTransferFrom = async (privateKey) => {
     setLoading(true);
-    
+
     try {
       const response = await fetch(`${API_BASE_URL}/api/transferFrom`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          userPrivateKey: privateKey, 
-          safeAddress: user.safeAddress, 
-          fromInput: transferFromData.from, 
-          toInput: transferFromData.to, 
-          amount: transferFromData.amount 
-        })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userPrivateKey: privateKey,
+          safeAddress: user.safeAddress,
+          fromInput: transferFromData.from,
+          toInput: transferFromData.to,
+          amount: transferFromData.amount,
+        }),
       });
-      
+
       const result = await response.json();
-      
+
       if (response.ok) {
         showMsg("Pull queued, waiting for confirmation...");
-        setTransferFromData({ from: '', to: '', amount: '' });
-        setTimeout(() => { 
-          fetchBalance(user.safeAddress); 
-          fetchTransactions(user.safeAddress); 
-          fetchApprovals(user.safeAddress, true); 
-          fetchIncomingAllowances(user.safeAddress, true); 
+        setTransferFromData({ from: "", to: "", amount: "" });
+        setTimeout(() => {
+          fetchBalance(user.safeAddress);
+          fetchTransactions(user.safeAddress);
+          fetchApprovals(user.safeAddress, true);
+          fetchIncomingAllowances(user.safeAddress, true);
         }, 7000);
       } else {
         showMsg(result.message || "TransferFrom REVERTED", "error");
@@ -448,158 +533,413 @@ const Dashboard = () => {
 
   // Autofill function - use matching types
   const handleAutofillFromAllowance = (allowance) => {
-    setTransferFromData({ 
+    setTransferFromData({
       from: allowance.allower,
       to: allowance.spenderDisplay,
-      amount: allowance.amount 
+      amount: allowance.amount,
     });
-    
+
     showMsg("Form autofilled from allowance", "success");
   };
 
   if (!user) return null;
 
-return (
+  return (
     <div className="min-h-screen bg-white dark:bg-[#0A0A0B] text-black dark:text-white pt-24 px-4 pb-12 relative overflow-x-hidden">
       <Stars />
       <div className="max-w-4xl mx-auto relative z-10">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-12">
           <div>
-            <p className="text-[10px] uppercase tracking-widest text-salvaGold font-bold">Salva Citizen</p>
-            <h2 className="text-3xl sm:text-4xl font-black truncate max-w-[200px] sm:max-w-none">{user.username}</h2>
+            <p className="text-[10px] uppercase tracking-widest text-salvaGold font-bold">
+              Salva Citizen
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-black truncate max-w-[200px] sm:max-w-none">
+              {user.username}
+            </h2>
           </div>
           <div className="bg-gray-100 dark:bg-white/5 p-4 rounded-2xl w-full sm:w-auto">
-            <p className="text-[10px] uppercase opacity-40 font-bold">Account Number</p>
-            <p className="font-mono font-bold text-salvaGold text-sm sm:text-base">{showBalance ? user.accountNumber : '••••••••••'}</p>
+            <p className="text-[10px] uppercase opacity-40 font-bold">
+              Account Number
+            </p>
+            <p className="font-mono font-bold text-salvaGold text-sm sm:text-base">
+              {showBalance ? user.accountNumber : "••••••••••"}
+            </p>
           </div>
         </header>
 
         <div className="rounded-3xl bg-gray-100 dark:bg-black p-6 sm:p-10 mb-8 border border-white/5 shadow-2xl overflow-hidden">
           <div className="flex justify-between items-center mb-4">
-            <p className="uppercase text-[10px] sm:text-xs opacity-40 font-bold tracking-widest">Available Balance</p>
-            <button onClick={() => setShowBalance(!showBalance)} className="hover:scale-110 transition-transform p-2">{showBalance ? '👁' : '👁‍🗨'}</button>
+            <p className="uppercase text-[10px] sm:text-xs opacity-40 font-bold tracking-widest">
+              Available Balance
+            </p>
+            <button
+              onClick={() => setShowBalance(!showBalance)}
+              className="hover:scale-110 transition-transform p-2"
+            >
+              {showBalance ? "👁" : "👁‍🗨"}
+            </button>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-baseline sm:gap-3 overflow-hidden">
-            <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter leading-none whitespace-nowrap">{showBalance ? formatNumber(balance) : '••••••.••'}</h1>
-            <span className="text-salvaGold text-xl sm:text-2xl font-black mt-1 sm:mt-0">NGNs</span>
+            <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tighter leading-none whitespace-nowrap">
+              {showBalance ? formatNumber(balance) : "••••••.••"}
+            </h1>
+            <span className="text-salvaGold text-xl sm:text-2xl font-black mt-1 sm:mt-0">
+              NGNs
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-8 sm:mt-10">
-            <button onClick={handleTransferClick} className="bg-salvaGold hover:bg-yellow-600 transition-colors text-black font-black py-4 rounded-2xl shadow-lg shadow-salvaGold/20 text-sm sm:text-base">SEND</button>
-            <button onClick={() => { navigator.clipboard.writeText(user.accountNumber); showMsg("Account number copied!"); }} className="border border-salvaGold/30 hover:bg-white/5 transition-all py-4 rounded-2xl font-bold text-sm sm:text-base">RECEIVE</button>
+            <button
+              onClick={handleTransferClick}
+              className="bg-salvaGold hover:bg-yellow-600 transition-colors text-black font-black py-4 rounded-2xl shadow-lg shadow-salvaGold/20 text-sm sm:text-base"
+            >
+              SEND
+            </button>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(user.accountNumber);
+                showMsg("Account number copied!");
+              }}
+              className="border border-salvaGold/30 hover:bg-white/5 transition-all py-4 rounded-2xl font-bold text-sm sm:text-base"
+            >
+              RECEIVE
+            </button>
           </div>
         </div>
 
-        <div onClick={() => { navigator.clipboard.writeText(user.safeAddress); showMsg("Wallet address copied!"); }} className="mb-8 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all">
-          <p className="text-[10px] uppercase opacity-40 font-bold mb-1 tracking-widest">Smart Wallet Address (Base)</p>
-          <p className="font-mono text-[10px] sm:text-xs text-salvaGold font-medium break-all truncate">{showBalance ? user.safeAddress : '0x••••••••••••••••••••••••••••••••••••••••'}</p>
+        <div
+          onClick={() => {
+            navigator.clipboard.writeText(user.safeAddress);
+            showMsg("Wallet address copied!");
+          }}
+          className="mb-8 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl border border-white/5 cursor-pointer hover:border-salvaGold/30 transition-all"
+        >
+          <p className="text-[10px] uppercase opacity-40 font-bold mb-1 tracking-widest">
+            Smart Wallet Address (Base)
+          </p>
+          <p className="font-mono text-[10px] sm:text-xs text-salvaGold font-medium break-all truncate">
+            {showBalance
+              ? user.safeAddress
+              : "0x••••••••••••••••••••••••••••••••••••••••"}
+          </p>
         </div>
 
         <div className="flex border-b border-white/10 mb-6 gap-8 overflow-x-auto no-scrollbar">
-          {['activity', 'approve', 'transferFrom'].map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} className={`pb-2 text-[10px] uppercase tracking-widest font-black transition-all whitespace-nowrap ${activeTab === tab ? 'border-b-2 border-salvaGold text-salvaGold' : 'opacity-40 hover:opacity-100'}`}>
-              {tab === 'activity' ? 'Recent Activity' : tab.replace(/([A-Z])/g, ' $1')}
+          {["activity", "approve", "transferFrom"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-2 text-[10px] uppercase tracking-widest font-black transition-all whitespace-nowrap ${activeTab === tab ? "border-b-2 border-salvaGold text-salvaGold" : "opacity-40 hover:opacity-100"}`}
+            >
+              {tab === "activity"
+                ? "Recent Activity"
+                : tab.replace(/([A-Z])/g, " $1")}
             </button>
           ))}
         </div>
 
-        {activeTab === 'activity' && (
+        {activeTab === "activity" && (
           <section className="px-1">
             <div className="flex justify-between items-end mb-6">
-              <h3 className="uppercase tracking-widest text-salvaGold text-[10px] sm:text-xs font-bold">History</h3>
-              <Link to="/transactions" className="text-[10px] uppercase tracking-tighter opacity-50 hover:opacity-100 transition-opacity font-bold underline">View All</Link>
+              <h3 className="uppercase tracking-widest text-salvaGold text-[10px] sm:text-xs font-bold">
+                History
+              </h3>
+              <Link
+                to="/transactions"
+                className="text-[10px] uppercase tracking-tighter opacity-50 hover:opacity-100 transition-opacity font-bold underline"
+              >
+                View All
+              </Link>
             </div>
             <div className="space-y-3">
               {transactions.length > 0 ? (
                 transactions.slice(0, 5).map((tx, i) => (
-                  <div key={i} onClick={() => navigate('/transactions')} className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4">
+                  <div
+                    key={i}
+                    onClick={() => navigate("/transactions")}
+                    className="flex justify-between items-center p-4 border border-white/5 bg-white/5 rounded-2xl hover:border-salvaGold/40 cursor-pointer transition-all gap-4"
+                  >
                     <div className="min-w-0">
-                      <p className="font-bold text-sm sm:text-base truncate">{tx.displayType === 'receive' ? `From: ${tx.displayPartner}` : `To: ${tx.displayPartner}`}</p>
-                      <p className="text-[10px] sm:text-xs opacity-40 font-medium uppercase">{tx.displayType || 'Transfer'}</p>
+                      <p className="font-bold text-sm sm:text-base truncate">
+                        {tx.displayType === "receive"
+                          ? `From: ${tx.fromUsername || tx.displayPartner}`
+                          : `To: ${tx.toUsername || tx.displayPartner}`}
+                      </p>
+                      <p className="text-[10px] sm:text-xs opacity-40 font-medium uppercase">
+                        {tx.displayType || "Transfer"}
+                      </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className={`font-black text-sm sm:text-base ${tx.displayType === 'receive' ? 'text-green-400' : 'text-red-400'}`}>{tx.displayType === 'receive' ? '+' : '-'}{formatNumber(tx.amount)}</p>
-                      <button onClick={(e) => downloadReceipt(e, tx)} className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter">Receipt ↓</button>
+                      <p
+                        className={`font-black text-sm sm:text-base ${tx.displayType === "receive" ? "text-green-400" : "text-red-400"}`}
+                      >
+                        {tx.displayType === "receive" ? "+" : "-"}
+                        {formatNumber(tx.amount)}
+                      </p>
+                      <button
+                        onClick={(e) => downloadReceipt(e, tx)}
+                        className="relative z-20 text-[10px] text-salvaGold hover:underline font-bold uppercase tracking-tighter"
+                      >
+                        Receipt ↓
+                      </button>
                     </div>
                   </div>
                 ))
-              ) : (<p className="text-center py-10 opacity-30 text-xs font-medium uppercase tracking-widest">Vault is empty</p>)}
+              ) : (
+                <p className="text-center py-10 opacity-30 text-xs font-medium uppercase tracking-widest">
+                  Vault is empty
+                </p>
+              )}
             </div>
           </section>
         )}
 
-        {activeTab === 'approve' && (
-          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        {activeTab === "approve" && (
+          <motion.section
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start"
+          >
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5">
-              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Update Permission</h4>
-              <form onSubmit={handleApproveClick} className="space-y-4">
-                <input required placeholder="Spender Account or Address" value={approveData.spender} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e) => setApproveData({...approveData, spender: e.target.value})} />
-                <input required placeholder="Amount to Limit" type="number" value={approveData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e) => setApproveData({...approveData, amount: e.target.value})} />
-                <button disabled={loading} className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all">{loading ? 'PROCESSING...' : 'UPDATE PERMISSION'}</button>
+              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">
+                Update Permission
+              </h4>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (isAccountLocked) return showMsg(lockMessage, "error");
+                  if (noPinWarning)
+                    return showMsg(
+                      "Please set transaction PIN in Account Settings",
+                      "error",
+                    );
+                  resolveAndConfirm(
+                    approveData.spender,
+                    approveData.amount,
+                    "approve",
+                  );
+                }}
+                className="space-y-4"
+              >
+                <input
+                  required
+                  placeholder="Spender Account or Address"
+                  value={approveData.spender}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) =>
+                    setApproveData({ ...approveData, spender: e.target.value })
+                  }
+                />
+                <input
+                  required
+                  placeholder="Amount to Limit"
+                  type="number"
+                  value={approveData.amount}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) =>
+                    setApproveData({ ...approveData, amount: e.target.value })
+                  }
+                />
+                <button
+                  disabled={loading}
+                  className="w-full py-4 bg-salvaGold text-black font-black rounded-xl text-xs uppercase tracking-widest hover:brightness-110 transition-all"
+                >
+                  {loading ? "PROCESSING..." : "UPDATE PERMISSION"}
+                </button>
               </form>
             </div>
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Active Permissions</h4>
-                <button onClick={() => fetchApprovals(user.safeAddress)} className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}>{isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}</button>
+                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">
+                  Active Permissions
+                </h4>
+                <button
+                  onClick={() => fetchApprovals(user.safeAddress)}
+                  className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? "animate-pulse" : ""}`}
+                >
+                  {isRefreshingApprovals ? "SYNCING..." : "REFRESH ↻"}
+                </button>
               </div>
-              <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
+              <div
+                className="flex-1 overflow-y-auto pr-2 no-scrollbar"
+                style={{ maxHeight: "250px" }}
+              >
                 {approvals.length > 0 ? (
                   <div className="space-y-3">
                     {approvals.map((app, i) => (
-                      <div key={i} className="flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5">
+                      <div
+                        key={i}
+                        className="flex justify-between items-center p-3 bg-black/20 rounded-xl border border-white/5"
+                      >
                         <div className="min-w-0 pr-2">
-                          <p className="font-mono text-[10px] text-salvaGold truncate">{app.displaySpender || app.spender}</p>
-                          <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Spender</p>
+                          <p className="font-mono text-[10px] text-salvaGold truncate">
+                            {app.displaySpender || app.spender}
+                          </p>
+                          <p className="text-[8px] uppercase opacity-40 font-bold">
+                            Authorized Spender
+                          </p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="font-black text-xs">{formatNumber(app.amount)}</p>
-                          <button onClick={() => setApproveData({ spender: app.displaySpender || app.spender, amount: '0' })} className="text-[8px] text-red-500 font-bold uppercase hover:underline">Revoke</button>
+                          <p className="font-black text-xs">
+                            {formatNumber(app.amount)}
+                          </p>
+                          <button
+                            onClick={() =>
+                              setApproveData({
+                                spender: app.displaySpender || app.spender,
+                                amount: "0",
+                              })
+                            }
+                            className="text-[8px] text-red-500 font-bold uppercase hover:underline"
+                          >
+                            Revoke
+                          </button>
                         </div>
                       </div>
                     ))}
                   </div>
-                ) : (<div className="h-full flex flex-col items-center justify-center py-10 opacity-20"><p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">No active<br/>approvals found</p></div>)}
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center py-10 opacity-20">
+                    <p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">
+                      No active
+                      <br />
+                      approvals found
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </motion.section>
         )}
 
-        {activeTab === 'transferFrom' && (
-          <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        {activeTab === "transferFrom" && (
+          <motion.section
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start"
+          >
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 min-h-[350px]">
-              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">Execute Approved Pull</h4>
-              <form onSubmit={handleTransferFromClick} className="space-y-4">
-                <input required placeholder="From (Account or Address)" value={transferFromData.from} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, from: e.target.value})} />
-                <input required placeholder="To (Account or Address)" value={transferFromData.to} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, to: e.target.value})} />
-                <input required placeholder="Amount" type="number" value={transferFromData.amount} className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold" onChange={(e)=>setTransferFromData({...transferFromData, amount: e.target.value})} />
-                <button disabled={loading} className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all">{loading ? 'EXECUTING...' : 'CONFIRM PULL'}</button>
+              <h4 className="text-salvaGold font-black text-xs mb-4 uppercase tracking-widest">
+                Execute Approved Pull
+              </h4>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (isAccountLocked) return showMsg(lockMessage, "error");
+                  if (noPinWarning)
+                    return showMsg(
+                      "Please set transaction PIN in Account Settings",
+                      "error",
+                    );
+                  resolveAndConfirm(
+                    transferFromData.from,
+                    transferFromData.amount,
+                    "transferFrom",
+                  );
+                }}
+                className="space-y-4"
+              >
+                <input
+                  required
+                  placeholder="From (Account or Address)"
+                  value={transferFromData.from}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) =>
+                    setTransferFromData({
+                      ...transferFromData,
+                      from: e.target.value,
+                    })
+                  }
+                />
+                <input
+                  required
+                  placeholder="To (Account or Address)"
+                  value={transferFromData.to}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) =>
+                    setTransferFromData({
+                      ...transferFromData,
+                      to: e.target.value,
+                    })
+                  }
+                />
+                <input
+                  required
+                  placeholder="Amount"
+                  type="number"
+                  value={transferFromData.amount}
+                  className="w-full p-4 bg-white dark:bg-black rounded-xl border border-white/10 text-sm outline-none focus:border-salvaGold font-bold"
+                  onChange={(e) =>
+                    setTransferFromData({
+                      ...transferFromData,
+                      amount: e.target.value,
+                    })
+                  }
+                />
+                <button
+                  disabled={loading}
+                  className="w-full py-4 border border-salvaGold text-salvaGold font-black rounded-xl text-xs uppercase tracking-widest hover:bg-salvaGold hover:text-black transition-all"
+                >
+                  {loading ? "EXECUTING..." : "CONFIRM PULL"}
+                </button>
               </form>
             </div>
             <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-3xl border border-white/5 flex flex-col h-full min-h-[350px]">
               <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">Allowances For Me</h4>
-                <button onClick={() => fetchIncomingAllowances(user.safeAddress)} className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? 'animate-pulse' : ''}`}>{isRefreshingApprovals ? 'SYNCING...' : 'REFRESH ↻'}</button>
+                <h4 className="text-salvaGold font-black text-xs uppercase tracking-widest">
+                  Allowances For Me
+                </h4>
+                <button
+                  onClick={() => fetchIncomingAllowances(user.safeAddress)}
+                  className={`text-[10px] font-bold text-salvaGold hover:opacity-70 transition-all flex items-center gap-1 ${isRefreshingApprovals ? "animate-pulse" : ""}`}
+                >
+                  {isRefreshingApprovals ? "SYNCING..." : "REFRESH ↻"}
+                </button>
               </div>
-              <div className="flex-1 overflow-y-auto pr-2 no-scrollbar" style={{ maxHeight: "250px" }}>
+              <div
+                className="flex-1 overflow-y-auto pr-2 no-scrollbar"
+                style={{ maxHeight: "250px" }}
+              >
                 {incomingAllowances.length > 0 ? (
                   <div className="space-y-3">
                     {incomingAllowances.map((app, i) => (
-                      <div key={i} onClick={() => handleAutofillFromAllowance(app)} className="p-3 bg-black/20 rounded-xl border border-white/5 cursor-pointer hover:border-salvaGold/40 transition-all">
+                      <div
+                        key={i}
+                        onClick={() => handleAutofillFromAllowance(app)}
+                        className="p-3 bg-black/20 rounded-xl border border-white/5 cursor-pointer hover:border-salvaGold/40 transition-all"
+                      >
                         <div className="flex justify-between items-center">
                           <div className="min-w-0 pr-2">
-                            <p className="font-mono text-[10px] text-salvaGold truncate">{app.allower}</p>
-                            <p className="text-[8px] uppercase opacity-40 font-bold">Authorized Me</p>
+                            <p className="font-mono text-[10px] text-salvaGold truncate">
+                              {app.allower}
+                            </p>
+                            <p className="text-[8px] uppercase opacity-40 font-bold">
+                              Authorized Me
+                            </p>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="font-black text-xs text-green-400">{formatNumber(app.amount)}</p>
-                            <p className="text-[8px] opacity-40 uppercase font-bold">Available</p>
+                            <p className="font-black text-xs text-green-400">
+                              {formatNumber(app.amount)}
+                            </p>
+                            <p className="text-[8px] opacity-40 uppercase font-bold">
+                              Available
+                            </p>
                           </div>
                         </div>
                       </div>
                     ))}
-                    <p className="text-[8px] text-center opacity-30 uppercase font-bold mt-2 italic">Tap an item to autofill form</p>
+                    <p className="text-[8px] text-center opacity-30 uppercase font-bold mt-2 italic">
+                      Tap an item to autofill form
+                    </p>
                   </div>
-                ) : (<div className="h-full flex flex-col items-center justify-center py-10 opacity-20"><p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">No one has<br/>authorized you</p></div>)}
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center py-10 opacity-20">
+                    <p className="text-center text-[10px] uppercase font-bold tracking-widest leading-loose">
+                      No one has
+                      <br />
+                      authorized you
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </motion.section>
@@ -609,22 +949,26 @@ return (
       {/* No PIN Warning Slide-in */}
       <AnimatePresence>
         {noPinWarning && (
-          <motion.div 
-            initial={{ x: '100%' }}
+          <motion.div
+            initial={{ x: "100%" }}
             animate={{ x: 0 }}
-            exit={{ x: '100%' }}
+            exit={{ x: "100%" }}
             className="fixed right-0 top-1/2 -translate-y-1/2 z-50 bg-red-500 text-white p-6 rounded-l-3xl shadow-2xl max-w-sm"
           >
-            <h4 className="font-black text-lg mb-2">🔐 Transaction PIN Required</h4>
-            <p className="text-sm mb-4">You must set a transaction PIN before performing any transactions.</p>
+            <h4 className="font-black text-lg mb-2">
+              🔐 Transaction PIN Required
+            </h4>
+            <p className="text-sm mb-4">
+              You must set a transaction PIN before performing any transactions.
+            </p>
             <div className="flex gap-2">
-              <button 
-                onClick={() => navigate('/account-settings')}
+              <button
+                onClick={() => navigate("/account-settings")}
                 className="flex-1 bg-white text-red-500 py-2 rounded-xl font-bold text-sm"
               >
                 Go to Settings
               </button>
-              <button 
+              <button
                 onClick={() => setNoPinWarning(false)}
                 className="px-4 bg-red-600 py-2 rounded-xl font-bold text-sm"
               >
@@ -635,30 +979,117 @@ return (
         )}
       </AnimatePresence>
 
+      {/* ✅ NEW: Confirmation Modal */}
+      <AnimatePresence>
+        {isConfirmModalOpen && confirmationData && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+            <motion.div
+              onClick={() => setIsConfirmModalOpen(false)}
+              className="absolute inset-0 bg-black/95 backdrop-blur-md"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+            <motion.div
+              onClick={(e) => e.stopPropagation()}
+              className="relative bg-white dark:bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-gray-200 dark:border-white/10 shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+            >
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 bg-salvaGold/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-3xl">✓</span>
+                </div>
+                <h3 className="text-2xl font-black mb-2">
+                  Confirm Transaction
+                </h3>
+                <p className="text-sm opacity-60">
+                  Please verify the details below
+                </p>
+              </div>
+
+              <div className="space-y-4 mb-6">
+                <div className="p-4 rounded-xl bg-gray-100 dark:bg-white/5">
+                  <p className="text-xs opacity-60 mb-1">Recipient Name</p>
+                  <p className="font-black text-lg text-salvaGold">
+                    {confirmationData.username}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-gray-100 dark:bg-white/5">
+                  <p className="text-xs opacity-60 mb-1">Account Number</p>
+                  <p className="font-mono font-bold">
+                    {confirmationData.accountNumber}
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-gray-100 dark:bg-white/5">
+                  <p className="text-xs opacity-60 mb-1">Amount</p>
+                  <p className="font-black text-xl">
+                    {formatNumber(confirmationData.amount)}{" "}
+                    <span className="text-salvaGold">NGNs</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setIsConfirmModalOpen(false);
+                    setConfirmationData(null);
+                  }}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 font-bold hover:bg-gray-100 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setIsConfirmModalOpen(false);
+                    if (pendingAction === "send") setIsSendOpen(false);
+                    setPendingTransaction(pendingAction);
+                    setIsPinModalOpen(true);
+                    setTransactionPin("");
+                    setPinAttempts(0);
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-salvaGold text-black font-bold hover:brightness-110"
+                >
+                  Confirm & Proceed
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* PIN Verification Modal */}
       <AnimatePresence>
         {isPinModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-            <motion.div 
-              onClick={() => !loading && setIsPinModalOpen(false)} 
-              className="absolute inset-0 bg-black/95 backdrop-blur-md" 
-              initial={{ opacity: 0 }} 
-              animate={{ opacity: 1 }} 
-              exit={{ opacity: 0 }} 
+            <motion.div
+              onClick={() => !loading && setIsPinModalOpen(false)}
+              className="absolute inset-0 bg-black/95 backdrop-blur-md"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
             />
-            <motion.div 
+            <motion.div
               onClick={(e) => e.stopPropagation()}
-              className="relative bg-white dark:bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-gray-200 dark:border-white/10 shadow-2xl" 
-              initial={{ opacity: 0, scale: 0.95 }} 
-              animate={{ opacity: 1, scale: 1 }} 
+              className="relative bg-white dark:bg-zinc-900 p-8 rounded-3xl w-full max-w-md border border-gray-200 dark:border-white/10 shadow-2xl"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
             >
               <div className="text-center mb-6">
                 <div className="w-16 h-16 bg-salvaGold/10 rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-3xl">🔐</span>
                 </div>
-                <h3 className="text-2xl font-black mb-2">Enter Transaction PIN</h3>
-                <p className="text-sm opacity-60">Verify your identity to proceed</p>
+                <h3 className="text-2xl font-black mb-2">
+                  Enter Transaction PIN
+                </h3>
+                <p className="text-sm opacity-60">
+                  Verify your identity to proceed
+                </p>
               </div>
 
               <input
@@ -667,7 +1098,9 @@ return (
                 pattern="\d{4}"
                 maxLength="4"
                 value={transactionPin}
-                onChange={(e) => setTransactionPin(e.target.value.replace(/\D/g, ''))}
+                onChange={(e) =>
+                  setTransactionPin(e.target.value.replace(/\D/g, ""))
+                }
                 placeholder="••••"
                 autoFocus
                 className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-transparent focus:border-salvaGold outline-none text-center text-3xl tracking-[1em] font-black mb-6"
@@ -680,19 +1113,19 @@ return (
               )}
 
               <div className="flex gap-3">
-                <button 
-                  onClick={() => setIsPinModalOpen(false)} 
+                <button
+                  onClick={() => setIsPinModalOpen(false)}
                   disabled={loading}
                   className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-white/10 font-bold hover:bg-gray-100 dark:hover:bg-white/5"
                 >
                   Cancel
                 </button>
-                <button 
-                  onClick={verifyPinAndProceed} 
+                <button
+                  onClick={verifyPinAndProceed}
                   disabled={loading || transactionPin.length !== 4}
                   className="flex-1 py-3 rounded-xl bg-salvaGold text-black font-bold hover:brightness-110 disabled:opacity-50"
                 >
-                  {loading ? 'VERIFYING...' : 'VERIFY'}
+                  {loading ? "VERIFYING..." : "VERIFY"}
                 </button>
               </div>
             </motion.div>
@@ -704,25 +1137,88 @@ return (
       <AnimatePresence>
         {isSendOpen && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-0 sm:px-4">
-            <motion.div onClick={() => !loading && setIsSendOpen(false)} className="absolute inset-0 bg-black/95 backdrop-blur-md" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
-            <motion.div className="relative bg-white dark:bg-zinc-900 p-6 sm:p-12 rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg border-t sm:border border-white/10 shadow-2xl" initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 200 }}>
+            <motion.div
+              onClick={() => !loading && setIsSendOpen(false)}
+              className="absolute inset-0 bg-black/95 backdrop-blur-md"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            />
+            <motion.div
+              className="relative bg-white dark:bg-zinc-900 p-6 sm:p-12 rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg border-t sm:border border-white/10 shadow-2xl"
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+            >
               <div className="w-12 h-1.5 bg-white/10 rounded-full mx-auto mb-6 sm:hidden" />
-              <h3 className="text-2xl sm:text-3xl font-black mb-1">Send NGNs</h3>
-              <p className="text-[10px] text-salvaGold uppercase tracking-widest font-bold mb-8">Salva Secure Transfer</p>
-              <form onSubmit={(e) => { e.preventDefault(); setIsSendOpen(false); setPendingTransaction('send'); setIsPinModalOpen(true); setTransactionPin(''); setPinAttempts(0);}} className="space-y-5">
+              <h3 className="text-2xl sm:text-3xl font-black mb-1">
+                Send NGNs
+              </h3>
+              <p className="text-[10px] text-salvaGold uppercase tracking-widest font-bold mb-8">
+                Salva Secure Transfer
+              </p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  resolveAndConfirm(
+                    transferData.to,
+                    transferData.amount,
+                    "send",
+                  );
+                }}
+                className="space-y-5"
+              >
                 <div>
-                  <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Recipient</label>
-                  <input required type="text" placeholder="Enter Account Number or Address" value={transferData.to} onChange={(e) => setTransferData({ ...transferData, to: e.target.value })} className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm" />
+                  <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">
+                    Recipient
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="Enter Account Number or Address"
+                    value={transferData.to}
+                    onChange={(e) =>
+                      setTransferData({ ...transferData, to: e.target.value })
+                    }
+                    className="w-full p-4 rounded-xl bg-gray-100 dark:bg-white/5 border border-transparent focus:border-salvaGold transition-all outline-none font-bold text-sm"
+                  />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">Amount (NGN)</label>
+                  <label className="text-[10px] uppercase opacity-40 font-bold mb-2 block">
+                    Amount (NGN)
+                  </label>
                   <div className="relative">
-                    <input required type="number" step="0.01" value={transferData.amount} onChange={(e) => setTransferData({ ...transferData, amount: e.target.value })} className={`w-full p-4 rounded-xl text-lg font-bold bg-gray-100 dark:bg-white/5 outline-none transition-all ${amountError ? 'border border-red-500 text-red-500' : 'border border-transparent'}`} />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-salvaGold font-black text-sm">NGN</span>
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      value={transferData.amount}
+                      onChange={(e) =>
+                        setTransferData({
+                          ...transferData,
+                          amount: e.target.value,
+                        })
+                      }
+                      className={`w-full p-4 rounded-xl text-lg font-bold bg-gray-100 dark:bg-white/5 outline-none transition-all ${amountError ? "border border-red-500 text-red-500" : "border border-transparent"}`}
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-salvaGold font-black text-sm">
+                      NGN
+                    </span>
                   </div>
-                  {amountError && <p className="text-[10px] text-red-400 mt-2 font-bold animate-pulse uppercase tracking-tight">⚠️ Balance too low.</p>}
+                  {amountError && (
+                    <p className="text-[10px] text-red-400 mt-2 font-bold animate-pulse uppercase tracking-tight">
+                      ⚠️ Balance too low.
+                    </p>
+                  )}
                 </div>
-                <button disabled={loading || amountError} type="submit" className={`w-full py-5 rounded-2xl font-black transition-all text-sm uppercase tracking-widest ${loading || amountError ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' : 'bg-salvaGold text-black hover:brightness-110 active:scale-95'}`}>{loading ? 'PROCESSING…' : 'CONFIRM SEND'}</button>
+                <button
+                  disabled={loading || amountError}
+                  type="submit"
+                  className={`w-full py-5 rounded-2xl font-black transition-all text-sm uppercase tracking-widest ${loading || amountError ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-salvaGold text-black hover:brightness-110 active:scale-95"}`}
+                >
+                  {loading ? "PROCESSING…" : "CONFIRM SEND"}
+                </button>
               </form>
             </motion.div>
           </div>
@@ -732,7 +1228,12 @@ return (
       {/* Notification Toast */}
       <AnimatePresence>
         {notification.show && (
-          <motion.div initial={{ y: 100, x: "-50%", opacity: 0 }} animate={{ y: 0, x: "-50%", opacity: 1 }} exit={{ y: 100, x: "-50%", opacity: 0 }} className={`fixed bottom-6 left-1/2 px-6 py-4 rounded-2xl z-[100] font-black text-[10px] uppercase tracking-widest shadow-2xl w-[90%] sm:w-auto text-center ${notification.type === 'error' ? 'bg-red-600 text-white' : 'bg-salvaGold text-black'}`}>
+          <motion.div
+            initial={{ y: 100, x: "-50%", opacity: 0 }}
+            animate={{ y: 0, x: "-50%", opacity: 1 }}
+            exit={{ y: 100, x: "-50%", opacity: 0 }}
+            className={`fixed bottom-6 left-1/2 px-6 py-4 rounded-2xl z-[100] font-black text-[10px] uppercase tracking-widest shadow-2xl w-[90%] sm:w-auto text-center ${notification.type === "error" ? "bg-red-600 text-white" : "bg-salvaGold text-black"}`}
+          >
             {notification.message}
           </motion.div>
         )}

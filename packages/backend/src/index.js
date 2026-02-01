@@ -549,28 +549,34 @@ app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
 
     // ✅ CHECK OTP VERIFICATION
     if (!otpStore[sanitizedEmail] || !otpStore[sanitizedEmail].verified) {
-      return res.status(401).json({ message: "Unauthorized. Verify OTP first." });
+      return res
+        .status(401)
+        .json({ message: "Unauthorized. Verify OTP first." });
     }
 
     // ✅ VALIDATE PASSWORD STRENGTH
-    if (!newPassword || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)) {
+    if (
+      !newPassword ||
+      !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(newPassword)
+    ) {
       return res.status(400).json({
-        message: "Password must be at least 8 characters with uppercase, lowercase, and number",
+        message:
+          "Password must be at least 8 characters with uppercase, lowercase, and number",
       });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
+
     // ✅ APPLY 24-HOUR LOCKDOWN
     const lockoutTime = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     const user = await User.findOneAndUpdate(
       { email: sanitizedEmail },
-      { 
+      {
         password: hashedPassword,
-        accountLockedUntil: lockoutTime // ✅ ADD LOCKDOWN
+        accountLockedUntil: lockoutTime, // ✅ ADD LOCKDOWN
       },
-      { new: true }
+      { new: true },
     );
 
     if (!user) {
@@ -582,21 +588,23 @@ app.post("/api/auth/reset-password", authLimiter, async (req, res) => {
 
     // ✅ SEND SECURITY EMAIL
     try {
-      const accountNum = await getAccountNumberFromAddress(user.safeAddress) || user.safeAddress;
+      const accountNum =
+        (await getAccountNumberFromAddress(user.safeAddress)) ||
+        user.safeAddress;
       await sendSecurityChangeEmail(
         sanitizedEmail,
         user.username,
         "password",
-        accountNum
+        accountNum,
       );
     } catch (emailError) {
       console.error("❌ Security email error:", emailError.message);
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Password updated successfully. Account locked for 24 hours.",
-      lockedUntil: lockoutTime 
+      lockedUntil: lockoutTime,
     });
   } catch (err) {
     console.error("❌ Reset password error:", err);
@@ -704,6 +712,52 @@ app.post("/api/login", authLimiter, async (req, res) => {
     });
   } catch (error) {
     return handleError(error, res, "Login failed");
+  }
+});
+
+// ===============================================
+// RESOLVE ACCOUNT NUMBER TO USERNAME
+// ===============================================
+app.post("/api/resolve-account-info", async (req, res) => {
+  try {
+    const { accountNumberOrAddress } = req.body;
+
+    if (!accountNumberOrAddress) {
+      return res
+        .status(400)
+        .json({ message: "Account number or address required" });
+    }
+
+    let user;
+
+    // Check if it's an address (starts with 0x)
+    if (accountNumberOrAddress.toLowerCase().startsWith("0x")) {
+      user = await User.findOne({
+        safeAddress: normalizeAddress(accountNumberOrAddress),
+      });
+    } else {
+      // It's an account number
+      user = await User.findOne({
+        accountNumber: accountNumberOrAddress,
+      });
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        message: "Account not found",
+        found: false,
+      });
+    }
+
+    res.json({
+      found: true,
+      username: user.username,
+      accountNumber: user.accountNumber,
+      safeAddress: user.safeAddress,
+    });
+  } catch (error) {
+    console.error("❌ Resolve account error:", error);
+    return handleError(error, res, "Failed to resolve account");
   }
 });
 
@@ -928,6 +982,18 @@ app.post("/api/transfer", async (req, res) => {
       senderDisplayIdentifier = safeAddress.toLowerCase();
     }
 
+    // ✅ NEW: Get sender's username
+    const senderUser = await User.findOne({
+      safeAddress: normalizeAddress(safeAddress),
+    });
+    const senderUsername = senderUser?.username || null;
+
+    // ✅ NEW: Get recipient's username
+    const recipientUser = await User.findOne({
+      safeAddress: normalizeAddress(recipientAddress),
+    });
+    const recipientUsername = recipientUser?.username || null;
+
     await delayBeforeBlockchain(safeAddress, "Transfer queued");
 
     const queueEntry = await new TransactionQueue({
@@ -957,8 +1023,10 @@ app.post("/api/transfer", async (req, res) => {
         await new Transaction({
           fromAddress: safeAddress.toLowerCase(),
           fromAccountNumber: senderAccountNumber,
+          fromUsername: senderUsername, // ✅ NEW
           toAddress: recipientAddress,
           toAccountNumber: toInput,
+          toUsername: recipientUsername, // ✅ NEW
           senderDisplayIdentifier: senderDisplayIdentifier,
           amount: amount,
           status: "failed",
@@ -986,8 +1054,10 @@ app.post("/api/transfer", async (req, res) => {
         await new Transaction({
           fromAddress: safeAddress.toLowerCase(),
           fromAccountNumber: senderAccountNumber,
+          fromUsername: senderUsername, // ✅ NEW
           toAddress: recipientAddress,
           toAccountNumber: toInput,
+          toUsername: recipientUsername, // ✅ NEW
           senderDisplayIdentifier: senderDisplayIdentifier,
           amount: amount,
           status: "successful",
@@ -998,30 +1068,7 @@ app.post("/api/transfer", async (req, res) => {
 
         await applyCooldown(safeAddress, 20);
 
-        // ✅ SEND EMAILS (Only on Success)
-        console.log(`🔍 Looking for sender: ${normalizeAddress(safeAddress)}`);
-        console.log(
-          `🔍 Looking for receiver: ${normalizeAddress(recipientAddress)}`,
-        );
-
-        const senderUser = await User.findOne({
-          safeAddress: normalizeAddress(safeAddress),
-        });
-        const receiverUser = await User.findOne({
-          safeAddress: normalizeAddress(recipientAddress),
-        });
-
-        console.log(
-          `🔍 Sender found: ${!!senderUser}, Email: ${senderUser?.email || "NONE"}`,
-        );
-        console.log(
-          `🔍 Receiver found: ${!!receiverUser}, Email: ${receiverUser?.email || "NONE"}`,
-        );
-
-        console.log(
-          `📧 Preparing emails - Sender: ${senderUser?.email || "NOT FOUND"}, Receiver: ${receiverUser?.email || "NOT FOUND"}`,
-        );
-
+        // Send emails
         if (senderUser && senderUser.email) {
           try {
             await sendTransactionEmailToSender(
@@ -1037,15 +1084,15 @@ app.post("/api/transfer", async (req, res) => {
           }
         }
 
-        if (receiverUser && receiverUser.email) {
+        if (recipientUser && recipientUser.email) {
           try {
             await sendTransactionEmailToReceiver(
-              receiverUser.email,
-              receiverUser.username,
+              recipientUser.email,
+              recipientUser.username,
               senderDisplayIdentifier,
               amount,
             );
-            console.log(`✅ Receiver email sent to: ${receiverUser.email}`);
+            console.log(`✅ Receiver email sent to: ${recipientUser.email}`);
           } catch (emailError) {
             console.error("❌ Receiver email FAILED:", emailError.message);
           }
@@ -1059,8 +1106,10 @@ app.post("/api/transfer", async (req, res) => {
         await new Transaction({
           fromAddress: safeAddress.toLowerCase(),
           fromAccountNumber: senderAccountNumber,
+          fromUsername: senderUsername, // ✅ NEW
           toAddress: recipientAddress,
           toAccountNumber: toInput,
+          toUsername: recipientUsername, // ✅ NEW
           senderDisplayIdentifier: senderDisplayIdentifier,
           amount: amount,
           status: "failed",
@@ -1296,12 +1345,11 @@ app.get("/api/transactions/:address", async (req, res) => {
 });
 
 // ===============================================
-// TRANSFER FROM - FIXED VERSION
+// TRANSFER FROM - COMPLETE FIXED VERSION
 // ===============================================
 app.post("/api/transferFrom", async (req, res) => {
   try {
-    const { userPrivateKey, safeAddress, fromInput, toInput, amount } =
-      req.body;
+    const { userPrivateKey, safeAddress, fromInput, toInput, amount } = req.body;
 
     validateAmount(amount);
     const amountWei = ethers.parseUnits(amount.toString(), 6);
@@ -1310,23 +1358,25 @@ app.post("/api/transferFrom", async (req, res) => {
     try {
       fromAddress = await resolveToAddress(fromInput);
     } catch (error) {
-      return res
-        .status(404)
-        .json({ success: false, message: `Source: ${error.message}` });
+      return res.status(404).json({ success: false, message: `Source: ${error.message}` });
     }
 
     try {
       toAddress = await resolveToAddress(toInput);
     } catch (error) {
-      return res
-        .status(404)
-        .json({ success: false, message: `Destination: ${error.message}` });
+      return res.status(404).json({ success: false, message: `Destination: ${error.message}` });
     }
 
     const fromInputWasAccountNumber = isAccountNumber(fromInput);
-    let senderDisplayIdentifier = fromInputWasAccountNumber
-      ? fromInput
-      : fromAddress;
+    let senderDisplayIdentifier = fromInputWasAccountNumber ? fromInput : fromAddress;
+
+    // ✅ NEW: Get usernames BEFORE queue entry
+    const fromUser = await User.findOne({
+      safeAddress: normalizeAddress(fromAddress),
+    });
+    const toUser = await User.findOne({
+      safeAddress: normalizeAddress(toAddress),
+    });
 
     await delayBeforeBlockchain(safeAddress, "TransferFrom queued");
 
@@ -1358,8 +1408,10 @@ app.post("/api/transferFrom", async (req, res) => {
         await new Transaction({
           fromAddress: fromAddress,
           fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
+          fromUsername: fromUser?.username || null, // ✅ ADD THIS
           toAddress: toAddress,
           toAccountNumber: toInput,
+          toUsername: toUser?.username || null, // ✅ ADD THIS
           senderDisplayIdentifier: senderDisplayIdentifier,
           executorAddress: safeAddress.toLowerCase(),
           amount: amount,
@@ -1369,9 +1421,7 @@ app.post("/api/transferFrom", async (req, res) => {
           date: new Date(),
         }).save();
 
-        return res
-          .status(400)
-          .json({ success: false, message: "Transfer failed to submit" });
+        return res.status(400).json({ success: false, message: "Transfer failed to submit" });
       }
 
       queueEntry.taskId = result.taskId;
@@ -1390,11 +1440,14 @@ app.post("/api/transferFrom", async (req, res) => {
         await queueEntry.save();
       }
 
+      // ✅ Save transaction with usernames
       await new Transaction({
         fromAddress: fromAddress,
         fromAccountNumber: fromInputWasAccountNumber ? fromInput : null,
+        fromUsername: fromUser?.username || null, // ✅ ADD THIS
         toAddress: toAddress,
         toAccountNumber: toInput,
+        toUsername: toUser?.username || null, // ✅ ADD THIS
         senderDisplayIdentifier: senderDisplayIdentifier,
         executorAddress: safeAddress.toLowerCase(),
         amount: amount,
@@ -1414,27 +1467,6 @@ app.post("/api/transferFrom", async (req, res) => {
       await applyCooldown(safeAddress, 20);
 
       // ✅ SEND EMAILS (Only on Success)
-      console.log(`🔍 Looking for from-user: ${normalizeAddress(fromAddress)}`);
-      console.log(`🔍 Looking for to-user: ${normalizeAddress(toAddress)}`);
-
-      const fromUser = await User.findOne({
-        safeAddress: normalizeAddress(fromAddress),
-      });
-      const toUser = await User.findOne({
-        safeAddress: normalizeAddress(toAddress),
-      });
-
-      console.log(
-        `🔍 From-user found: ${!!fromUser}, Email: ${fromUser?.email || "NONE"}`,
-      );
-      console.log(
-        `🔍 To-user found: ${!!toUser}, Email: ${toUser?.email || "NONE"}`,
-      );
-
-      console.log(
-        `📧 Preparing transferFrom emails - From: ${fromUser?.email || "NOT FOUND"}, To: ${toUser?.email || "NOT FOUND"}`,
-      );
-
       if (fromUser && fromUser.email) {
         try {
           await sendTransactionEmailToSender(
