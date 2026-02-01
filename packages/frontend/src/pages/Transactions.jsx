@@ -103,97 +103,121 @@ const Transactions = () => {
       maximumFractionDigits: 2,
     });
 
-  // FIXED: Receipt generation in Transactions.jsx with correct status and timestamp
-  const downloadReceipt = (tx) => {
-    const doc = new jsPDF();
-    const gold = [212, 175, 55];
-    const dark = [10, 10, 11];
-    const red = [239, 68, 68];
-    const isReceived = tx.displayType === "receive";
-    const isSuccessful = tx.status === "successful";
+// FIXED: Receipt generation in Transactions.jsx with name AND account number
+const downloadReceipt = (tx) => {
+  const doc = new jsPDF();
+  const gold = [212, 175, 55];
+  const dark = [10, 10, 11];
+  const red = [239, 68, 68];
+  const isReceived = tx.displayType === "receive";
+  const isSuccessful = tx.status === "successful";
 
-    doc.setFillColor(dark[0], dark[1], dark[2]);
-    doc.rect(0, 0, 210, 297, "F");
-    doc.setDrawColor(gold[0], gold[1], gold[2]);
-    doc.setLineWidth(1);
-    doc.rect(10, 10, 190, 277);
-    doc.setTextColor(gold[0], gold[1], gold[2]);
-    doc.setFontSize(40);
-    doc.setFont("helvetica", "bold");
-    doc.text("SALVA", 105, 45, { align: "center" });
-    doc.setFontSize(10);
-    doc.setTextColor(255, 255, 255);
-    doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
-    doc.setDrawColor(255, 255, 255, 0.1);
-    doc.line(30, 65, 180, 65);
+  doc.setFillColor(dark[0], dark[1], dark[2]);
+  doc.rect(0, 0, 210, 297, "F");
+  doc.setDrawColor(gold[0], gold[1], gold[2]);
+  doc.setLineWidth(1);
+  doc.rect(10, 10, 190, 277);
+  doc.setTextColor(gold[0], gold[1], gold[2]);
+  doc.setFontSize(40);
+  doc.setFont("helvetica", "bold");
+  doc.text("SALVA", 105, 45, { align: "center" });
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("OFFICIAL TRANSACTION RECEIPT", 105, 55, { align: "center" });
+  doc.setDrawColor(255, 255, 255, 0.1);
+  doc.line(30, 65, 180, 65);
 
-    // AMOUNT
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("AMOUNT TRANSFERRED", 40, 90);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
+  // AMOUNT
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("AMOUNT TRANSFERRED", 40, 90);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.text(`${formatNumber(tx.amount)} NGNs`, 40, 102);
 
-    // SENDER (FROM)
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("FROM (SENDER)", 40, 125);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    const senderInfo = isReceived
-      ? tx.fromUsername || tx.displayPartner
-      : user.username;
-    doc.text(senderInfo, 40, 135);
-
-    // RECIPIENT (TO)
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("TO (RECIPIENT)", 40, 155);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    const recipientInfo = isReceived
-      ? user.username
-      : tx.toUsername || tx.displayPartner;
-    doc.text(recipientInfo, 40, 165);
-
-    // DATE & TIME - FIXED: Only show HH:MM AM/PM
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("DATE & TIME", 40, 185);
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
-    const date = new Date(tx.date);
-    const dateStr = date.toLocaleDateString();
-    const timeStr = date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-    doc.text(`${dateStr} ${timeStr}`, 40, 195);
-
-    // STATUS - FIXED: Show actual status
-    doc.setFontSize(12);
-    doc.setTextColor(150, 150, 150);
-    doc.text("BLOCKCHAIN STATUS", 40, 215);
-    doc.setFontSize(14);
-
-    if (isSuccessful) {
-      doc.setTextColor(gold[0], gold[1], gold[2]);
-      doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 227);
-    } else {
-      doc.setTextColor(red[0], red[1], red[2]);
-      doc.text("FAILED ON-CHAIN", 40, 227);
-    }
-
-    // REFERENCE
+  // ✅ UPDATED: SENDER (FROM) - Show both name AND account number
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("FROM (SENDER)", 40, 125);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  
+  if (isReceived) {
+    // Show sender's username (or fallback) AND their account number
+    const senderName = tx.fromUsername || "Unknown";
+    const senderAccount = tx.fromAccountNumber || tx.fromAddress;
+    doc.text(senderName, 40, 135);
     doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`REF: ${tx._id || "SALVA-TX"}`, 105, 270, { align: "center" });
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Account: ${senderAccount}`, 40, 142);
+  } else {
+    // Current user is sender
+    doc.text(user.username, 40, 135);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Account: ${user.accountNumber}`, 40, 142);
+  }
 
-    doc.save(`Salva_Receipt_${Date.now()}.pdf`);
-    showMsg("Receipt downloaded successfully!");
-  };
+  // ✅ UPDATED: RECIPIENT (TO) - Show both name AND account number
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("TO (RECIPIENT)", 40, 160);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  
+  if (isReceived) {
+    // Current user is recipient
+    doc.text(user.username, 40, 170);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Account: ${user.accountNumber}`, 40, 177);
+  } else {
+    // Show recipient's username (or fallback) AND their account number
+    const recipientName = tx.toUsername || "Unknown";
+    const recipientAccount = tx.toAccountNumber || tx.toAddress;
+    doc.text(recipientName, 40, 170);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`Account: ${recipientAccount}`, 40, 177);
+  }
+
+  // DATE & TIME
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("DATE & TIME", 40, 195);
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  const date = new Date(tx.date);
+  const dateStr = date.toLocaleDateString();
+  const timeStr = date.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+  doc.text(`${dateStr} ${timeStr}`, 40, 205);
+
+  // BLOCKCHAIN STATUS
+  doc.setFontSize(12);
+  doc.setTextColor(150, 150, 150);
+  doc.text("BLOCKCHAIN STATUS", 40, 225);
+  doc.setFontSize(14);
+
+  if (isSuccessful) {
+    doc.setTextColor(gold[0], gold[1], gold[2]);
+    doc.text("VERIFIED ON-CHAIN (BASE SEPOLIA)", 40, 237);
+  } else {
+    doc.setTextColor(red[0], red[1], red[2]);
+    doc.text("FAILED ON-CHAIN", 40, 237);
+  }
+
+  // REFERENCE
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`REF: ${tx._id || "SALVA-TX"}`, 105, 270, { align: "center" });
+
+  doc.save(`Salva_Receipt_${Date.now()}.pdf`);
+  showMsg("Receipt downloaded successfully!");
+};
 
   if (!user) return null;
 
